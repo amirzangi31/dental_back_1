@@ -1,0 +1,523 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "<Deantal_Service />",
+    "description": "API documentation for Dental Service",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "Authorization": {
+        "type": "apiKey",
+        "name": "Authorization",
+        "scheme": "bearer",
+        "in": "header",
+        "description": "User token form authorization: **Bearer [user_token]**"
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Auth",
+      "description": "auth routes"
+    }
+  ],
+  "paths": {
+    "/api/auth/signup": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "signup",
+
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "name"
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "description": "lastName"
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "country"
+                  },
+                  "postalCode": {
+                    "type": "string",
+                    "description": "postalCode"
+                  },
+                  "email": {
+                    "type": "string",
+                    "description": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "password"
+                  },
+                  "confirmPassword": {
+                    "type": "string",
+                    "description": "confirmPassword"
+                  },
+                  "role": {
+                    "type": "string",
+                    "description": "role"
+                  },
+                  "specaility": {
+                    "type": "string",
+                    "description": "specaility"
+                  },
+                  "laboratoryName": {
+                    "type": "string",
+                    "description": "laboratoryName"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "phoneNumber"
+                  },
+                  "sessionId": {
+                    "type": "string",
+                    "description": "sessionId"
+                  }
+                },
+                "required": [
+                  "name",
+                  "lastName",
+                  "country",
+                  "postalCode",
+                  "email",
+                  "password",
+                  "confirmPassword",
+                  "role",
+                  "sessionId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "signup success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+
+          "500": {
+            "description": "internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/sendemail": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "sendemail",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "description": "email"
+                  }
+                },
+                "required": ["email"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "sendemail success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/verifyemail": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "verifyemail",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "description": "email"
+                  },
+                  "otp": {
+                    "type": "string",
+                    "description": "otp"
+                  }
+                },
+                "required": ["email", "otp"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "verifyemail success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    },
+                    "accessToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "internal server error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/refreshtoken": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "refreshtoken",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string",
+                    "description": "accessToken"
+                  },
+                  "refreshToken": {
+                    "type": "string",
+                    "description": "refreshToken"
+                  }
+                },
+                "required": ["accessToken", "refreshToken"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "refreshtoken success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    },
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/api/users/user": {
+      "get": {
+        "tags": ["Users"],
+        "summary": "getUser",
+        "security": [
+          {
+            "Authorization": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "getUser success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "email": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/users/updateuser": {
+      "put": {
+        "tags": ["Users"],
+        "summary": "updateUser",
+        "security": [
+          {
+            "Authorization": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "name"
+                  },
+                  "lastName": {
+                    "type": "string",
+                    "description": "lastName"
+                  },
+                  "specaility": {
+                    "type": "string",
+                    "description": "specaility"
+                  },
+                  "laboratoryName": {
+                    "type": "string",
+                    "description": "laboratoryName"
+                  },
+                  "phoneNumber": {
+                    "type": "string",
+                    "description": "phoneNumber"
+                  },
+                  "country": {
+                    "type": "string",
+                    "description": "country"
+                  },
+                  "postalCode": {
+                    "type": "string",
+                    "description": "postalCode"
+                  }
+                },
+                "required": ["name", "lastName", "specaility", "laboratoryName", "phoneNumber", "country", "postalCode"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "updateUser success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/auth/signin": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "signin",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "description": "email"
+                  },
+                  "password": {
+                    "type": "string",
+                    "description": "password"
+                  }
+                },
+                "required": ["email", "password"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "signin success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string"
+                    },
+                    "refreshToken": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+
+    "/api/catalog/catalogs": {
+      "get": {
+        "tags": ["Catalog"],
+        "summary": "getCatalog",
+        "security": [
+          {
+            "Authorization": []
+          }
+        ]
+      }
+    },
+    "/api/catalog/catalog": {
+      "post": {
+        "tags": ["Catalog"],
+        "summary": "createCatalog",
+        "security": [
+          {
+            "Authorization": []
+          }
+        ]
+      }
+    },  
+    "/api/catalog/catalog/:id": {
+      "put": {
+        "tags": ["Catalog"],
+        "summary": "updateCatalog",
+        "security": [
+          {
+            "Authorization": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string",
+                    "description": "title"
+                  }
+                },
+                "required": ["title"]
+              }
+            }
+          }
+        }
+      },
+      "responses": {
+        "200": {
+          "description": "updateCatalog internal server error",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {   
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    
+  }
+} 

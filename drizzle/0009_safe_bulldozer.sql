@@ -1,0 +1,1 @@
+ALTER TABLE "volume" ADD COLUMN "default" numeric(10, 2);

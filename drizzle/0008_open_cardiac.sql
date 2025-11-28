@@ -1,0 +1,2 @@
+ALTER TABLE "category" ADD COLUMN "color" integer;--> statement-breakpoint
+ALTER TABLE "category" ADD CONSTRAINT "category_color_color_id_fk" FOREIGN KEY ("color") REFERENCES "public"."color"("id") ON DELETE no action ON UPDATE no action;

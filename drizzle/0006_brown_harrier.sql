@@ -1,0 +1,1 @@
+ALTER TABLE "category" DROP CONSTRAINT "category_catalog_unique";

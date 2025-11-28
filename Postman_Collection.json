@@ -1,0 +1,1129 @@
+{
+  "info": {
+    "name": "Dental Back API",
+    "description": "Complete API collection for Dental Back application",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Send Email OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/sendemail",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "sendemail"]
+            }
+          }
+        },
+        {
+          "name": "Verify Email OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/verifyemail",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "verifyemail"]
+            }
+          }
+        },
+        {
+          "name": "Signup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"sessionId\": \"session-id-from-verifyemail\",\n  \"password\": \"password123\",\n  \"name\": \"علی\",\n  \"lastName\": \"احمدی\",\n  \"country\": \"ایران\",\n  \"postalcode\": \"1234567890\",\n  \"phonenumber\": \"09123456789\",\n  \"role\": \"user\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signup",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signup"]
+            }
+          }
+        },
+        {
+          "name": "Signin",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/signin",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "signin"]
+            }
+          }
+        },
+        {
+          "name": "Refresh Token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/refreshtoken",
+              "host": ["{{base_url}}"],
+              "path": ["api", "auth", "refreshtoken"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "Get User",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/users/user",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "user"]
+            }
+          }
+        },
+        {
+          "name": "Update User",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"علی\",\n  \"lastName\": \"احمدی\",\n  \"speciality\": \"جراح دندان\",\n  \"labratorName\": \"آزمایشگاه نمونه\",\n  \"phonenumber\": \"09123456789\",\n  \"country\": \"ایران\",\n  \"postalcode\": \"1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/users/user",
+              "host": ["{{base_url}}"],
+              "path": ["api", "users", "user"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "Get Catalogs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/catalog/catalogs",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "catalogs"]
+            }
+          }
+        },
+        {
+          "name": "Create Catalog",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"کاتالوگ دندان مصنوعی\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/catalog/catalog",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "catalog"]
+            }
+          }
+        },
+        {
+          "name": "Update Catalog",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"کاتالوگ به‌روز شده\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/catalog/catalog/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "catalog", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Catalog",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/catalog/catalog/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "catalog", "catalog", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Category",
+      "item": [
+        {
+          "name": "Get Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/category/categories",
+              "host": ["{{base_url}}"],
+              "path": ["api", "category", "categories"]
+            }
+          }
+        },
+        {
+          "name": "Create Category",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "دندان مصنوعی",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "توضیحات category",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "150000.50",
+                  "type": "text"
+                },
+                {
+                  "key": "catalog",
+                  "value": "1",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/category/category",
+              "host": ["{{base_url}}"],
+              "path": ["api", "category", "category"]
+            }
+          }
+        },
+        {
+          "name": "Update Category",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "عنوان به‌روز شده",
+                  "type": "text"
+                },
+                {
+                  "key": "description",
+                  "value": "توضیحات جدید",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "200000",
+                  "type": "text"
+                },
+                {
+                  "key": "catalog",
+                  "value": "2",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/category/category/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "category", "category", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Category",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/category/category/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "category", "category", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Volume",
+      "item": [
+        {
+          "name": "Get Volumes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/volume/volumes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "volume", "volumes"]
+            }
+          }
+        },
+        {
+          "name": "Create Volume",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"حجم 1-10\",\n  \"start\": \"1.00\",\n  \"end\": \"10.00\",\n  \"price\": \"50000.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/volume/volume",
+              "host": ["{{base_url}}"],
+              "path": ["api", "volume", "volume"]
+            }
+          }
+        },
+        {
+          "name": "Update Volume",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"حجم به‌روز شده\",\n  \"start\": \"5.00\",\n  \"end\": \"15.00\",\n  \"price\": \"75000.00\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/volume/volume/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "volume", "volume", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Volume",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/volume/volume/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "volume", "volume", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "MaterialShade",
+      "item": [
+        {
+          "name": "Get MaterialShades",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/materialshade/materialshades",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materialshade", "materialshades"]
+            }
+          }
+        },
+        {
+          "name": "Create MaterialShade",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Material Shade A1\",\n  \"price\": 50000,\n  \"category\": \"A\",\n  \"color\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/materialshade/materialshade",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materialshade", "materialshade"]
+            }
+          }
+        },
+        {
+          "name": "Update MaterialShade",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Material Shade B2\",\n  \"price\": 60000,\n  \"category\": \"B\",\n  \"color\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/materialshade/materialshade/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materialshade", "materialshade", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete MaterialShade",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/materialshade/materialshade/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "materialshade", "materialshade", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "ImplantAttribute",
+      "item": [
+        {
+          "name": "Get ImplantAttributes",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/implantattribute/implantattributes",
+              "host": ["{{base_url}}"],
+              "path": ["api", "implantattribute", "implantattributes"]
+            }
+          }
+        },
+        {
+          "name": "Create ImplantAttribute",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "Implant Attribute 1",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "100000",
+                  "type": "text"
+                },
+                {
+                  "key": "color",
+                  "value": "2",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/implantattribute/implantattribute",
+              "host": ["{{base_url}}"],
+              "path": ["api", "implantattribute", "implantattribute"]
+            }
+          }
+        },
+        {
+          "name": "Update ImplantAttribute",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "Implant Attribute به‌روز شده",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "150000",
+                  "type": "text"
+                },
+                {
+                  "key": "color",
+                  "value": "3",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/implantattribute/implantattribute/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "implantattribute", "implantattribute", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete ImplantAttribute",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/implantattribute/implantattribute/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "implantattribute", "implantattribute", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Device",
+      "item": [
+        {
+          "name": "Get Devices",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/device/devices",
+              "host": ["{{base_url}}"],
+              "path": ["api", "device", "devices"]
+            }
+          }
+        },
+        {
+          "name": "Create Device",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "دستگاه اسکن دندان",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "200000",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/device/device",
+              "host": ["{{base_url}}"],
+              "path": ["api", "device", "device"]
+            }
+          }
+        },
+        {
+          "name": "Update Device",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "دستگاه به‌روز شده",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "250000",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/device/device/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "device", "device", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Device",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/device/device/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "device", "device", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "AdditionalScan",
+      "item": [
+        {
+          "name": "Get AdditionalScans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/additionalscan/additionalscans",
+              "host": ["{{base_url}}"],
+              "path": ["api", "additionalscan", "additionalscans"]
+            }
+          }
+        },
+        {
+          "name": "Create AdditionalScan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "اسکن اضافی",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "30000",
+                  "type": "text"
+                },
+                {
+                  "key": "color",
+                  "value": "1",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/additionalscan/additionalscan",
+              "host": ["{{base_url}}"],
+              "path": ["api", "additionalscan", "additionalscan"]
+            }
+          }
+        },
+        {
+          "name": "Update AdditionalScan",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                {
+                  "key": "file",
+                  "type": "file",
+                  "src": []
+                },
+                {
+                  "key": "title",
+                  "value": "اسکن به‌روز شده",
+                  "type": "text"
+                },
+                {
+                  "key": "price",
+                  "value": "35000",
+                  "type": "text"
+                },
+                {
+                  "key": "color",
+                  "value": "2",
+                  "type": "text"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/additionalscan/additionalscan/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "additionalscan", "additionalscan", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete AdditionalScan",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/additionalscan/additionalscan/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "additionalscan", "additionalscan", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Color",
+      "item": [
+        {
+          "name": "Get Colors",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/color/colors",
+              "host": ["{{base_url}}"],
+              "path": ["api", "color", "colors"]
+            }
+          }
+        },
+        {
+          "name": "Create Color",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"قرمز\",\n  \"code\": \"#FF0000\",\n  \"category\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/color/color",
+              "host": ["{{base_url}}"],
+              "path": ["api", "color", "color"]
+            }
+          }
+        },
+        {
+          "name": "Update Color",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"قرمز تیره\",\n  \"code\": \"#CC0000\",\n  \"category\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/color/color/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "color", "color", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Delete Color",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/color/color/:id",
+              "host": ["{{base_url}}"],
+              "path": ["api", "color", "color", ":id"],
+              "variable": [
+                {
+                  "key": "id",
+                  "value": "1"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4002"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "refresh_token",
+      "value": ""
+    }
+  ]
+}
+

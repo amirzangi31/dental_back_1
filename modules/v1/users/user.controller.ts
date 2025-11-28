@@ -1,0 +1,81 @@
+import { Request, Response } from "express";
+import { verify } from "jsonwebtoken";
+import { errorResponse, successResponse } from "../../../utils/responses";
+import { db } from "../../../db";
+import { users } from "../../../db/schema/users";
+import { eq } from "drizzle-orm";
+
+export const getUser = async (req: Request, res: Response) => {
+  try {
+    const token = (req as any).token;
+
+    let email;
+    try {
+      const decoded: any = verify(token, process.env.SECRET_KEY as string);
+      email = decoded.email;
+    } catch (err) {
+      return errorResponse(res, 401, "توکن نامعتبر است", null);
+    }
+
+    const user = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        specaility: users.specaility,
+        laboratoryName: users.laboratoryName,
+        phoneNumber: users.phoneNumber,
+        country: users.country,
+        postalCode: users.postalCode,
+      })
+      .from(users)
+      .where(eq(users.email, email));
+    if (user.length > 0) {
+      return successResponse(res, 200, user[0], "user fetched successfully");
+    }
+    return errorResponse(res, 404, "user not found", null);
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    const token = (req as any).token;
+    let email;
+    try {
+      const decoded: any = verify(token, process.env.SECRET_KEY as string);
+      email = decoded.email;
+    } catch (err) {
+      return errorResponse(res, 401, "توکن نامعتبر است", null);
+    }
+    
+    const {
+      name,
+      lastName,
+      specaility,
+      laboratoryName,
+      phoneNumber,
+      country,
+      postalCode,
+    } = req.body;
+
+    await db
+      .update(users)
+      .set({
+        name,
+        lastName,
+        specaility,
+        laboratoryName,
+        phoneNumber,
+        country,
+        postalCode,
+      })
+      .where(eq(users.email, email));
+    return successResponse(res, 200, {}, "user updated successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
