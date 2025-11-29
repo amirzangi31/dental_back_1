@@ -7,7 +7,7 @@ import { db } from "../../../db";
 import { users } from "../../../db/schema/users";
 import { generateAccessToken } from "../../../utils/generateAccessToken";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { verify } from "jsonwebtoken";
+import { decode, verify } from "jsonwebtoken";
 import { compare, hash } from "bcryptjs";
 
 export const sendemail = async (req: Request, res: Response) => {
@@ -63,7 +63,7 @@ export const verifyemail = async (req: Request, res: Response) => {
         role: users.role,
         isDeleted: users.isDeleted,
       })
-      .from(users) 
+      .from(users)
       .where(eq(users.email, email));
     if (user.length > 0 && user[0].isDeleted === 0) {
       return errorResponse(res, 400, "User is deleted", null);
@@ -134,7 +134,7 @@ export const signup = async (req: Request, res: Response) => {
         email,
         password: hashedPassword,
         role: req.body.role,
-        name: req.body.name, 
+        name: req.body.name,
         lastName: req.body.lastName,
         country: req.body.country,
         postalCode: req.body.postalCode,
@@ -185,7 +185,7 @@ export const signin = async (req: Request, res: Response) => {
       .from(users)
       .where(eq(users.email, email));
     const isPasswordCorrect = await compare(password, user[0].password);
-    
+
     if (!isPasswordCorrect) {
       return errorResponse(res, 400, "Password is incorrect", null);
     }
@@ -288,6 +288,42 @@ export const refreshToken = async (req: Request, res: Response) => {
       },
       "token refreshed successfully"
     );
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const logout = async (req: Request, res: Response) => {
+  try {
+    const token = (req as any).token;
+    const decoded: any = decode(token);
+
+    await redis.del(`refresh:${decoded.email}`);
+    return successResponse(res, 200, null, "User logged out successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const user = async (req: Request, res: Response) => {
+  try {
+    const token = (req as any).token;
+    const decoded: any = decode(token);
+    const user = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        name: users.name,
+        lastName: users.lastName,
+        country: users.country,
+        postalCode: users.postalCode,
+        phoneNumber: users.phoneNumber,
+        specaility: users.specaility,
+        laboratoryName: users.laboratoryName,
+      })
+      .from(users)
+      .where(eq(users.email, decoded.email));
+    return successResponse(res, 200, user[0], "User fetched successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
   }
