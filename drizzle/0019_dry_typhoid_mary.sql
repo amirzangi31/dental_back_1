@@ -1,0 +1,1 @@
+ALTER TABLE "tooth" ALTER COLUMN "volume" SET DEFAULT '[]'::jsonb;

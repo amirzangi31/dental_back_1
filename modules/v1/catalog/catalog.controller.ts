@@ -31,7 +31,10 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
         category_title: category.title,
         category_price: category.price,
         category_file: category.file,
-        category_color: color.code,
+        category_color: {
+          id: color.id,
+          color: color.code,
+        },
       })
       .from(catalog)
       .leftJoin(category, eq(catalog.id, category.catalog))

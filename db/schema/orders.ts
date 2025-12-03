@@ -8,6 +8,7 @@ import {
   integer,
   boolean,
   decimal,
+  primaryKey,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { tooth } from "./tooth";
@@ -37,15 +38,30 @@ export const orders = pgTable("orders", {
   patientgender: patientGenderPgEnum("patientgender").$type<PatientGender>(),
   report: integer("report"),
   status: orderStatusPgEnum("status").$type<OrderStatus>(),
-  totalaprice: decimal("totalaprice", { precision: 10, scale: 2 }),
+  totalaprice: decimal("totalaprice", { precision: 10, scale: 2 }).default("0.00"),
   paymentstatus: boolean("paymentstatus").default(false),
   comment: text("comment"),
   file: text("file"),
   discount: integer("discount"),
   vip: boolean("vip").default(false),
-  teeth: integer("teeth").references(() => tooth.id),
+  connections: integer("connections").array(),
   isDeleted: integer("isDeleted").notNull().default(0),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
   updatedAt: timestamp("updatedAt").notNull().defaultNow(),
 });
+
+export const orderTeeth = pgTable(
+  "order_teeth",
+  {
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    toothId: integer("tooth_id")
+      .notNull()
+      .references(() => tooth.id, { onDelete: "cascade" }),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.orderId, table.toothId] }),
+  })
+);
 

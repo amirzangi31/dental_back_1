@@ -1,0 +1,1 @@
+ALTER TABLE "tooth" DROP CONSTRAINT "tooth_connection_unique";

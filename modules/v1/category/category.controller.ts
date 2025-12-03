@@ -42,7 +42,7 @@ export const getCategory = async (req: Request, res: Response) => {
 
 export const createCategory = async (req: Request, res: Response) => {
   try {
-    const { title, description, price, catalog } = req.body;
+    const { title, description, price, catalog, color } = req.body;
     const file = req.file;
 
     if (!file) {
@@ -69,6 +69,7 @@ export const createCategory = async (req: Request, res: Response) => {
         price: price ? String(price) : null,
         catalog: catalog ? parseInt(catalog) : null,
         file: file.path,
+        color: color ? parseInt(color) : null,
       })
       .returning();
 
