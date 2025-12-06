@@ -29,3 +29,4 @@ export const users = pgTable("users", {
   laboratoryName: varchar("laboratoryName", { length: 100 }),
   phoneNumber: varchar("phoneNumber", { length: 100 }),
 });
+  

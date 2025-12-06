@@ -74,7 +74,7 @@ export const createImplant = async (req: Request, res: Response) => {
     const file = req.file;
 
     if (!file) {
-      return errorResponse(res, 400, "فایل الزامی است", null);
+      return errorResponse(res, 400, "File is required", null);
     }
 
     const fileRecord = await db

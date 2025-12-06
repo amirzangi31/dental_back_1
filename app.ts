@@ -14,6 +14,7 @@ import { setHeaders } from "./middleware/headers";
 import categorycolorRoutes from "./modules/v1/categorycolor/categorycolor.routes";
 import implantRoutes from "./modules/v1/implant/implant.routes";
 import orderRoutes from "./modules/v1/order/order.routes";
+import vipRoutes from "./modules/v1/vip/vip.routes";
 const app = express();
 app.use(express.json());
 app.use(express.json());
@@ -38,6 +39,7 @@ app.use("/api/implant", implantRoutes);
 app.use("/api/materialshade", materialShadeRoutes);
 app.use("/api/implantattribute", implantAttributeRoutes);
 app.use("/api/order", orderRoutes);
+app.use("/api/vip", vipRoutes);
 app.use("/uploads", express.static("uploads"));
 app.use((req: Request, res: Response) => {
   console.log("this path is not found:", req.path);

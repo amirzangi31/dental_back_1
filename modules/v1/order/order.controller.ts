@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { verify } from "jsonwebtoken";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
-import { orders, orderTeeth } from "../../../db/schema/orders";
+import { orders, OrderStatus, orderTeeth } from "../../../db/schema/orders";
 import { tooth } from "../../../db/schema/tooth";
 import { eq, inArray } from "drizzle-orm";
 import { calculateTeethTotalPrice } from "../../../utils/calculateTeethPrice";
@@ -13,6 +13,7 @@ import { implant } from "../../../db/schema/implant";
 import { additionalscan } from "../../../db/schema/additionalscan";
 import { volume } from "../../../db/schema/volume";
 import { color } from "../../../db/schema/color";
+import { files } from "../../../db/schema/files";
 
 export const createOrder = async (req: Request, res: Response) => {
   try {
@@ -39,25 +40,15 @@ export const createOrder = async (req: Request, res: Response) => {
     }
 
     const teethValues = teeth.map((toothData: any) => ({
-      toothnumber: toothData.toothnumber
-        ? parseInt(toothData.toothnumber)
-        : null,
-      category: toothData.category ? parseInt(toothData.category) : null,
-      device: toothData.device ? parseInt(toothData.device) : null,
-      materialshade: toothData.materialshade
-        ? parseInt(toothData.materialshade)
-        : null,
-      implant: toothData.implant ? parseInt(toothData.implant) : null,
-      additionalscan: toothData.additionalscan
-        ? parseInt(toothData.additionalscan)
-        : null,
-      volume: toothData.volume || {
-        id: 0,
-        defaultValue: 0,
-        start: 0,
-        end: 0,
-      },
+      toothnumber: +toothData.toothnumber || null,
+      category: +toothData.category || null,
+      device: +toothData.device || null,
+      materialshade: +toothData.materialshade || null,
+      implant: +toothData.implant || null,
+      additionalscan: +toothData.additionalscan || null,
+      volume: toothData.volume || [],
     }));
+
     const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
       category,
       device,
@@ -66,6 +57,7 @@ export const createOrder = async (req: Request, res: Response) => {
       additionalscan,
       volume,
     });
+
     const createdTeeth = await db.insert(tooth).values(teethValues).returning();
 
     const [newOrder] = await db
@@ -77,7 +69,7 @@ export const createOrder = async (req: Request, res: Response) => {
         patientage: patientage ? parseInt(patientage) : null,
         patientgender: patientgender || null,
         report: report ? parseInt(report) : null,
-        status: status || "uploadfile",
+        status: "check",
         totalaprice: String(totalPrice),
         paymentstatus: paymentstatus || false,
         comment,
@@ -88,26 +80,69 @@ export const createOrder = async (req: Request, res: Response) => {
       })
       .returning();
 
-    const orderTeethData = createdTeeth.map((createdTooth) => ({
+    const orderTeethData = createdTeeth.map((t) => ({
       orderId: newOrder.id,
-      toothId: createdTooth.id,
+      toothId: t.id,
     }));
 
     await db.insert(orderTeeth).values(orderTeethData);
 
-    const orderWithTeeth = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, newOrder.id))
-      .limit(1);
+    const teethIds = createdTeeth.map((t) => t.id);
 
+    const detailedTeeth = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        category: tooth.category,
+        categoryName: category.title,
+        categoryPrice: category.price,
+        device: tooth.device,
+        devicePrice: device.price,
+        materialshade: tooth.materialshade,
+        materialshadePrice: materialshade.price,
+        implant: tooth.implant,
+        implantPrice: implant.price,
+        additionalscan: tooth.additionalscan,
+        additionalscanPrice: additionalscan.price,
+        volume: tooth.volume,
+        colorCode: color.code,
+        color: color.id,
+      })
+      .from(tooth)
+      .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(implant, eq(tooth.implant, implant.id))
+      .leftJoin(additionalscan, eq(tooth.additionalscan, additionalscan.id))
+      .leftJoin(color, eq(category.color, color.id))
+      .where(inArray(tooth.id, teethIds));
+
+    const finalTeeth = detailedTeeth.map((t) => {
+      const volumeTotal = Array.isArray(t.volume)
+        ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
+        : 0;
+
+      const total =
+        Number(t.categoryPrice ?? 0) +
+        Number(t.devicePrice ?? 0) +
+        Number(t.materialshadePrice ?? 0) +
+        Number(t.implantPrice ?? 0) +
+        Number(t.additionalscanPrice ?? 0) +
+        volumeTotal;
+
+      return {
+        ...t,
+        price: total,
+      };
+    });
+    console.log(finalTeeth);
     return successResponse(
       res,
       201,
       {
-        order: orderWithTeeth[0],
-        teeth: createdTeeth,
-        teethIds: createdTeeth.map((t) => t.id),
+        order: newOrder,
+        teeth: finalTeeth,
+        teethIds,
       },
       "سفارش با موفقیت ایجاد شد"
     );
@@ -149,22 +184,49 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         id: tooth.id,
         toothnumber: tooth.toothnumber,
         category: tooth.category,
+        categoryName: category.title,
+        categoryPrice: category.price,
         device: tooth.device,
+        devicePrice: device.price,
         materialshade: tooth.materialshade,
+        materialshadePrice: materialshade.price,
         implant: tooth.implant,
+        implantPrice: implant.price,
         additionalscan: tooth.additionalscan,
+        additionalscanPrice: additionalscan.price,
         volume: tooth.volume,
-        colorCode: color.code, 
+        colorCode: color.code,
+        color: color.id,
       })
       .from(tooth)
       .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(implant, eq(tooth.implant, implant.id))
+      .leftJoin(additionalscan, eq(tooth.additionalscan, additionalscan.id))
       .leftJoin(color, eq(category.color, color.id))
       .where(inArray(tooth.id, teethIds));
 
-    const teethDataWithOrder = teethData.map((t) => ({
-      ...t,
-      order: teeth.find((ot) => ot.toothId === t.id),
-    }));
+    const teethDataWithOrder = teethData.map((t) => {
+      const volumeTotal = Array.isArray(t.volume)
+        ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
+        : 0;
+
+      const totalPrice =
+        Number(t.categoryPrice ?? 0) +
+        Number(t.devicePrice ?? 0) +
+        Number(t.materialshadePrice ?? 0) +
+        Number(t.implantPrice ?? 0) +
+        Number(t.additionalscanPrice ?? 0) +
+        volumeTotal;
+
+      return {
+        ...t,
+        price: totalPrice,
+        order: teeth.find((ot) => ot.toothId === t.id),
+      };
+    });
+
     return successResponse(
       res,
       200,
@@ -178,7 +240,6 @@ export const getOrderWithId = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 export const updateOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -196,47 +257,46 @@ export const updateOrder = async (req: Request, res: Response) => {
       teeth,
       connections,
     } = req.body;
+
     const { id } = req.params;
     const user = (req as any).user;
 
+    // ---------- check order ----------
     const order = await db.select().from(orders).where(eq(orders.id, +id));
-    if (order.length === 0) {
-      return errorResponse(res, 404, "Order not found", null);
-    }
-    if (order[0].user_id !== user.userId) {
+    if (!order.length) return errorResponse(res, 404, "Order not found", null);
+    if (order[0].user_id !== user.userId)
       return errorResponse(
         res,
         403,
         "You are not authorized to update this order",
         null
       );
-    }
 
-    if (!teeth || !Array.isArray(teeth) || teeth.length === 0) {
-      return errorResponse(res, 400, "At least one tooth must be selected", null);
-    }
+    if (!teeth || !Array.isArray(teeth) || teeth.length === 0)
+      return errorResponse(res, 400, "حداقل یک دندان باید انتخاب شود", null);
 
-    const oldOrderTeeth = await db.select().from(orderTeeth).where(eq(orderTeeth.orderId, +id));
-    const oldToothIds = oldOrderTeeth.map((ot) => ot.toothId);
-    if (oldToothIds.length > 0) {
+    // ---------- remove old teeth ----------
+    const oldTeeth = await db
+      .select()
+      .from(orderTeeth)
+      .where(eq(orderTeeth.orderId, +id));
+    const oldToothIds = oldTeeth.map((t) => t.toothId);
+    if (oldToothIds.length) {
       await db.delete(orderTeeth).where(eq(orderTeeth.orderId, +id));
       await db.delete(tooth).where(inArray(tooth.id, oldToothIds));
     }
 
-    const teethValues = teeth.map((toothData: any) => ({
-      toothnumber: toothData.toothnumber ? parseInt(toothData.toothnumber) : null,
-      category: toothData.category ? parseInt(toothData.category) : null,
-      device: toothData.device ? parseInt(toothData.device) : null,
-      materialshade: toothData.materialshade ? parseInt(toothData.materialshade) : null,
-      implant: toothData.implant ? parseInt(toothData.implant) : null,
-      additionalscan: toothData.additionalscan ? parseInt(toothData.additionalscan) : null,
-      volume: toothData.volume || {
-        id: 0,
-        defaultValue: 0,
-        start: 0,
-        end: 0,
-      },
+    // ---------- create new teeth & compute prices ----------
+    const teethValues = teeth.map((t: any) => ({
+      toothnumber: +t.toothnumber || null,
+      category: +t.category || null,
+      device: +t.device || null,
+      materialshade: +t.materialshade || null,
+      implant: +t.implant || null,
+      additionalscan: +t.additionalscan || null,
+      volume: t.volume || [],
     }));
+
     const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
       category,
       device,
@@ -245,29 +305,81 @@ export const updateOrder = async (req: Request, res: Response) => {
       additionalscan,
       volume,
     });
+
     const createdTeeth = await db.insert(tooth).values(teethValues).returning();
 
-    const newOrderTeethData = createdTeeth.map((createdTooth) => ({
+    // ---------- insert orderTeeth ----------
+    const orderTeethData = createdTeeth.map((t) => ({
       orderId: +id,
-      toothId: createdTooth.id,
+      toothId: t.id,
     }));
+    if (orderTeethData.length)
+      await db.insert(orderTeeth).values(orderTeethData);
 
-    await db.insert(orderTeeth).values(newOrderTeethData);
+    const teethIds = createdTeeth.map((t) => t.id);
 
+    // ---------- fetch detailed teeth info ----------
+    const detailedTeeth = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        category: tooth.category,
+        categoryName: category.title,
+        categoryPrice: category.price,
+        device: tooth.device,
+        devicePrice: device.price,
+        materialshade: tooth.materialshade,
+        materialshadePrice: materialshade.price,
+        implant: tooth.implant,
+        implantPrice: implant.price,
+        additionalscan: tooth.additionalscan,
+        additionalscanPrice: additionalscan.price,
+        volume: tooth.volume,
+        colorCode: color.code,
+        color: color,
+      })
+      .from(tooth)
+      .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(implant, eq(tooth.implant, implant.id))
+      .leftJoin(additionalscan, eq(tooth.additionalscan, additionalscan.id))
+      .leftJoin(color, eq(category.color, color.id))
+      .where(inArray(tooth.id, teethIds));
+
+    const finalTeeth = detailedTeeth.map((t) => {
+      const volumeTotal = Array.isArray(t.volume)
+        ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
+        : 0;
+      const total =
+        Number(t.categoryPrice ?? 0) +
+        Number(t.devicePrice ?? 0) +
+        Number(t.materialshadePrice ?? 0) +
+        Number(t.implantPrice ?? 0) +
+        Number(t.additionalscanPrice ?? 0) +
+        volumeTotal;
+
+      return {
+        ...t,
+        price: total,
+      };
+    });
+
+    // ---------- update order ----------
     const [updatedOrder] = await db
       .update(orders)
       .set({
         title,
         patientname,
-        patientage: patientage ? parseInt(patientage) : null,
+        patientage: patientage ? parseInt(patientage, 10) : null,
         patientgender: patientgender || null,
-        report: report ? parseInt(report) : null,
+        report: report ? parseInt(report, 10) : null,
         status: status || "uploadfile",
         totalaprice: String(totalPrice),
         paymentstatus: paymentstatus || false,
         comment,
         file,
-        discount: discount ? parseInt(discount) : null,
+        discount: discount ? parseInt(discount, 10) : null,
         vip: vip || false,
         connections: connections || [],
       })
@@ -279,10 +391,223 @@ export const updateOrder = async (req: Request, res: Response) => {
       200,
       {
         order: updatedOrder,
-        teeth: createdTeeth,
-        teethIds: createdTeeth.map((t) => t.id),
+        teeth: finalTeeth,
+        teethIds,
       },
       "Order updated successfully"
+    );
+  } catch (error) {
+    console.error("Error updating order:", error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const submitOrder = async (req: Request, res: Response) => {
+  try {
+    const { id, vip, comment } = req.params;
+    const user = (req as any).user;
+    const order = await db.select().from(orders).where(eq(orders.id, +id));
+    const file = req.file;
+    if (file) {
+      const fileRecord = await db
+        .insert(files)
+        .values({
+          filename: file.filename,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          path: file.path,
+          user_id: (req as any).user?.id || null,
+        })
+        .returning();
+    }
+    if (!order.length) return errorResponse(res, 404, "Order not found", null);
+    if (order[0].user_id !== user.userId)
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to submit this order",
+        null
+      );
+    if (order[0].status !== "uploadfile")
+      return errorResponse(res, 400, "Order is not in uploadfile status", null);
+    if (order[0].paymentstatus)
+      return errorResponse(res, 400, "Order is already paid", null);
+
+    await db
+      .update(orders)
+      .set({
+        comment: comment || null,
+        file: file ? file.path : null,
+        status: "design" as OrderStatus,
+        vip: vip === "true" || false,
+      })
+      .where(eq(orders.id, +id));
+
+    return successResponse(res, 200, {}, "Order submitted successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const orderList = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+
+    const ordersList = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.user_id, user.userId));
+
+    if (!ordersList.length) {
+      return successResponse(res, 200, [], "Orders fetched successfully");
+    }
+
+    const ordersWithCategories = await Promise.all(
+      ordersList.map(async (order) => {
+        const teethRelations = await db
+          .select()
+          .from(orderTeeth)
+          .where(eq(orderTeeth.orderId, order.id));
+        const teethIds = teethRelations.map((t) => t.toothId);
+
+        const teethCategories = await db
+          .select({
+            categoryId: tooth.category,
+            categoryName: category.title,
+          })
+          .from(tooth)
+          .leftJoin(category, eq(tooth.category, category.id))
+          .where(inArray(tooth.id, teethIds));
+
+        const uniqueCategories = teethCategories.reduce((acc: any[], c) => {
+          if (!acc.find((x) => x.categoryId === c.categoryId)) {
+            acc.push(c);
+          }
+          return acc;
+        }, []);
+
+        return {
+          ...order,
+          categories: uniqueCategories,
+        };
+      })
+    );
+
+    return successResponse(
+      res,
+      200,
+      ordersWithCategories,
+      "Orders fetched successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const orderListAdmin = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    if (user.role !== "admin") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to access this resource",
+        null
+      );
+    }
+    const order = await db.select().from(orders);
+    const ordersWithCategories = await Promise.all(
+      order.map(async (order) => {
+        const teethRelations = await db
+          .select()
+          .from(orderTeeth)
+          .where(eq(orderTeeth.orderId, order.id));
+        const teethIds = teethRelations.map((t) => t.toothId);
+
+        const teethCategories = await db
+          .select({
+            categoryId: tooth.category,
+            categoryName: category.title,
+          })
+          .from(tooth)
+          .leftJoin(category, eq(tooth.category, category.id))
+          .where(inArray(tooth.id, teethIds));
+
+        const uniqueCategories = teethCategories.reduce((acc: any[], c) => {
+          if (!acc.find((x) => x.categoryId === c.categoryId)) {
+            acc.push(c);
+          }
+          return acc;
+        }, []);
+
+        return {
+          ...order,
+          categories: uniqueCategories,
+        };
+      })
+    );
+
+    return successResponse(
+      res,
+      200,
+      ordersWithCategories,
+      "Orders fetched successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const changeOrderStatus = async (req: Request, res: Response) => {
+  try {
+    const { status, orderId, totalPrice } = req.body;
+    const user = (req as any).user;
+    if (user.role !== "admin") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to access this resource",
+        null
+      );
+    }
+    const file = req.file;
+    if (file) {
+      const fileRecord = await db
+        .insert(files)
+        .values({
+          filename: file.filename,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          path: file.path,
+          user_id: (req as any).user?.id || null,
+        })
+        .returning();
+    }
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, +orderId));
+    if (!order) return errorResponse(res, 404, "Order not found", null);
+    console.log(totalPrice)
+    await db
+      .update(orders)
+      .set({
+        status: status as OrderStatus,
+        file: file ? file.path : null,
+        totalaprice: totalPrice
+          ? String(totalPrice)
+          : order?.totalaprice || "0.00",
+      })
+      .where(eq(orders.id, +orderId));
+    return successResponse(
+      res,
+      200,
+      {
+        order: orderId,
+      },
+      "Order status changed successfully"
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
