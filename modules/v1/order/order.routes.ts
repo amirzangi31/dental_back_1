@@ -4,6 +4,7 @@ import {
   changeOrderStatus,
   createOrder,
   getOrderWithId,
+  orderDropDown,
   orderList,
   orderListAdmin,
   submitOrder,
@@ -18,6 +19,7 @@ router.get("/order/:id", auth, getOrderWithId);
 router.put("/order/:id", auth, updateOrder);
 router.put("/submitorderwithuser/:id", auth, uploadSingle("file"), submitOrder);
 router.get("/orderlist", auth, orderList);
+router.get("/orders/dropdown", auth, orderDropDown);
 router.get("/orderlistadmin", auth, orderListAdmin);
 router.put("/changeorderstatus", auth, uploadSingle("file"), changeOrderStatus);
 export default router;

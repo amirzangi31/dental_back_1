@@ -15,6 +15,7 @@ import categorycolorRoutes from "./modules/v1/categorycolor/categorycolor.routes
 import implantRoutes from "./modules/v1/implant/implant.routes";
 import orderRoutes from "./modules/v1/order/order.routes";
 import vipRoutes from "./modules/v1/vip/vip.routes";
+import ticketRoutes from "./modules/v1/tickets/ticket.routes";
 const app = express();
 app.use(express.json());
 app.use(express.json());
@@ -35,6 +36,7 @@ app.use("/api/categorycolor", categorycolorRoutes);
 app.use("/api/additionalscan", additionalscanRoutes);
 app.use("/api/device", deviceRoutes);
 app.use("/api/volume", volumeRoutes);
+app.use("/api/ticket", ticketRoutes);
 app.use("/api/implant", implantRoutes);
 app.use("/api/materialshade", materialShadeRoutes);
 app.use("/api/implantattribute", implantAttributeRoutes);

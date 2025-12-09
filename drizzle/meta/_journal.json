@@ -5,155 +5,22 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1763313400054,
-      "tag": "0000_mixed_darkhawk",
+      "when": 1765217103085,
+      "tag": "0000_natural_purple_man",
       "breakpoints": true
     },
     {
       "idx": 1,
       "version": "7",
-      "when": 1763546675780,
-      "tag": "0001_furry_millenium_guard",
+      "when": 1765217273444,
+      "tag": "0001_panoramic_wolfsbane",
       "breakpoints": true
     },
     {
       "idx": 2,
       "version": "7",
-      "when": 1763744454086,
-      "tag": "0002_yielding_skrulls",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1763746754323,
-      "tag": "0003_cloudy_young_avengers",
-      "breakpoints": true
-    },
-    {
-      "idx": 4,
-      "version": "7",
-      "when": 1763748111035,
-      "tag": "0004_careless_gauntlet",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "7",
-      "when": 1763749067284,
-      "tag": "0005_happy_the_enforcers",
-      "breakpoints": true
-    },
-    {
-      "idx": 6,
-      "version": "7",
-      "when": 1763837442010,
-      "tag": "0006_brown_harrier",
-      "breakpoints": true
-    },
-    {
-      "idx": 7,
-      "version": "7",
-      "when": 1763921761878,
-      "tag": "0007_low_hellcat",
-      "breakpoints": true
-    },
-    {
-      "idx": 8,
-      "version": "7",
-      "when": 1763985243141,
-      "tag": "0008_open_cardiac",
-      "breakpoints": true
-    },
-    {
-      "idx": 9,
-      "version": "7",
-      "when": 1764084776371,
-      "tag": "0009_safe_bulldozer",
-      "breakpoints": true
-    },
-    {
-      "idx": 10,
-      "version": "7",
-      "when": 1764084901901,
-      "tag": "0010_overrated_sprite",
-      "breakpoints": true
-    },
-    {
-      "idx": 11,
-      "version": "7",
-      "when": 1764093304616,
-      "tag": "0011_windy_gateway",
-      "breakpoints": true
-    },
-    {
-      "idx": 12,
-      "version": "7",
-      "when": 1764696169291,
-      "tag": "0012_abnormal_shen",
-      "breakpoints": true
-    },
-    {
-      "idx": 13,
-      "version": "7",
-      "when": 1764697550504,
-      "tag": "0013_gigantic_the_stranger",
-      "breakpoints": true
-    },
-    {
-      "idx": 14,
-      "version": "7",
-      "when": 1764698313476,
-      "tag": "0014_greedy_kinsey_walden",
-      "breakpoints": true
-    },
-    {
-      "idx": 15,
-      "version": "7",
-      "when": 1764699808898,
-      "tag": "0015_nervous_runaways",
-      "breakpoints": true
-    },
-    {
-      "idx": 16,
-      "version": "7",
-      "when": 1764699959250,
-      "tag": "0016_noisy_titanium_man",
-      "breakpoints": true
-    },
-    {
-      "idx": 17,
-      "version": "7",
-      "when": 1764700861530,
-      "tag": "0017_perfect_imperial_guard",
-      "breakpoints": true
-    },
-    {
-      "idx": 18,
-      "version": "7",
-      "when": 1764749377596,
-      "tag": "0018_stale_rhodey",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "7",
-      "when": 1764749596301,
-      "tag": "0019_dry_typhoid_mary",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "7",
-      "when": 1764869144698,
-      "tag": "0020_awesome_bastion",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "7",
-      "when": 1764871455039,
-      "tag": "0021_glorious_logan",
+      "when": 1765218200384,
+      "tag": "0002_pale_proudstar",
       "breakpoints": true
     }
   ]

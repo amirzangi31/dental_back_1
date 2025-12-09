@@ -505,6 +505,24 @@ export const orderList = async (req: Request, res: Response) => {
   }
 };
 
+export const orderDropDown = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+
+    const ordersList = await db
+      .select({
+        id: orders.id,
+        title: orders.patientname,
+      })
+      .from(orders)
+      .where(eq(orders.user_id, user.userId));
+
+    return successResponse(res, 200, ordersList, "Orders fetched successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
 export const orderListAdmin = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -590,7 +608,7 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .from(orders)
       .where(eq(orders.id, +orderId));
     if (!order) return errorResponse(res, 404, "Order not found", null);
-    console.log(totalPrice)
+    console.log(totalPrice);
     await db
       .update(orders)
       .set({

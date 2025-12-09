@@ -1,6 +1,6 @@
 {
-  "id": "999b1f39-a294-4d2d-ae60-4a9aa066ff3e",
-  "prevId": "bdf5a344-a5c7-4c0d-b2af-972b89421179",
+  "id": "c62364a0-57c1-4a2a-b17d-d1885995c7ed",
+  "prevId": "58466e77-07dd-446c-9db8-998737ab416b",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -32,11 +32,32 @@
           "primaryKey": false,
           "notNull": false
         },
-        "icon": {
-          "name": "icon",
+        "file": {
+          "name": "file",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -76,6 +97,27 @@
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -114,6 +156,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "color": {
+          "name": "color",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "price": {
           "name": "price",
           "type": "numeric(10, 2)",
@@ -126,15 +174,43 @@
           "primaryKey": false,
           "notNull": false
         },
-        "icon": {
-          "name": "icon",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
       "foreignKeys": {
+        "category_color_color_id_fk": {
+          "name": "category_color_color_id_fk",
+          "tableFrom": "category",
+          "tableTo": "color",
+          "columnsFrom": [
+            "color"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
         "category_catalog_catalog_id_fk": {
           "name": "category_catalog_catalog_id_fk",
           "tableFrom": "category",
@@ -150,15 +226,7 @@
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "category_catalog_unique": {
-          "name": "category_catalog_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "catalog"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -178,6 +246,27 @@
           "type": "varchar(255)",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -215,6 +304,27 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -267,15 +377,120 @@
           "primaryKey": false,
           "notNull": false
         },
-        "icon": {
-          "name": "icon",
-          "type": "text",
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.files": {
+      "name": "files",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "filename": {
+          "name": "filename",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "originalname": {
+          "name": "originalname",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mimetype": {
+          "name": "mimetype",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "size": {
+          "name": "size",
+          "type": "bigint",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "path": {
+          "name": "path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "files_user_id_users_id_fk": {
+          "name": "files_user_id_users_id_fk",
+          "tableFrom": "files",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -310,11 +525,39 @@
           "primaryKey": false,
           "notNull": false
         },
-        "icon": {
-          "name": "icon",
+        "file": {
+          "name": "file",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "parent_id": {
+          "name": "parent_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": null
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -325,6 +568,19 @@
           "tableTo": "color",
           "columnsFrom": [
             "color"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "implant_parent_id_implant_id_fk": {
+          "name": "implant_parent_id_implant_id_fk",
+          "tableFrom": "implant",
+          "tableTo": "implant",
+          "columnsFrom": [
+            "parent_id"
           ],
           "columnsTo": [
             "id"
@@ -367,11 +623,32 @@
           "primaryKey": false,
           "notNull": false
         },
-        "icon": {
-          "name": "icon",
+        "file": {
+          "name": "file",
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -430,6 +707,27 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -449,6 +747,66 @@
         }
       },
       "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.order_teeth": {
+      "name": "order_teeth",
+      "schema": "",
+      "columns": {
+        "order_id": {
+          "name": "order_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tooth_id": {
+          "name": "tooth_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "order_teeth_order_id_orders_id_fk": {
+          "name": "order_teeth_order_id_orders_id_fk",
+          "tableFrom": "order_teeth",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "order_teeth_tooth_id_tooth_id_fk": {
+          "name": "order_teeth_tooth_id_tooth_id_fk",
+          "tableFrom": "order_teeth",
+          "tableTo": "tooth",
+          "columnsFrom": [
+            "tooth_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "order_teeth_order_id_tooth_id_pk": {
+          "name": "order_teeth_order_id_tooth_id_pk",
+          "columns": [
+            "order_id",
+            "tooth_id"
+          ]
+        }
+      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -512,7 +870,8 @@
           "name": "totalaprice",
           "type": "numeric(10, 2)",
           "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": "'0.00'"
         },
         "paymentstatus": {
           "name": "paymentstatus",
@@ -533,6 +892,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "adminFile": {
+          "name": "adminFile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "discount": {
           "name": "discount",
           "type": "integer",
@@ -546,24 +911,44 @@
           "notNull": false,
           "default": false
         },
-        "teeth": {
-          "name": "teeth",
-          "type": "integer",
+        "isDelivered": {
+          "name": "isDelivered",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "deliveryDate": {
+          "name": "deliveryDate",
+          "type": "timestamp",
           "primaryKey": false,
           "notNull": false
         },
-        "created_at": {
-          "name": "created_at",
+        "connections": {
+          "name": "connections",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "now()"
         },
-        "updated_at": {
-          "name": "updated_at",
+        "updatedAt": {
+          "name": "updatedAt",
           "type": "timestamp",
           "primaryKey": false,
-          "notNull": false,
+          "notNull": true,
           "default": "now()"
         }
       },
@@ -575,19 +960,6 @@
           "tableTo": "users",
           "columnsFrom": [
             "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "orders_teeth_tooth_id_fk": {
-          "name": "orders_teeth_tooth_id_fk",
-          "tableFrom": "orders",
-          "tableTo": "tooth",
-          "columnsFrom": [
-            "teeth"
           ],
           "columnsTo": [
             "id"
@@ -617,6 +989,27 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -627,6 +1020,174 @@
           "tableTo": "orders",
           "columnsFrom": [
             "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.ticket_messages": {
+      "name": "ticket_messages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "ticket_id": {
+          "name": "ticket_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sender_id": {
+          "name": "sender_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sender_type": {
+          "name": "sender_type",
+          "type": "varchar(10)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message": {
+          "name": "message",
+          "type": "varchar(2000)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file": {
+          "name": "file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "ticket_messages_ticket_id_tickets_id_fk": {
+          "name": "ticket_messages_ticket_id_tickets_id_fk",
+          "tableFrom": "ticket_messages",
+          "tableTo": "tickets",
+          "columnsFrom": [
+            "ticket_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "ticket_messages_sender_id_users_id_fk": {
+          "name": "ticket_messages_sender_id_users_id_fk",
+          "tableFrom": "ticket_messages",
+          "tableTo": "users",
+          "columnsFrom": [
+            "sender_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tickets": {
+      "name": "tickets",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "order_id": {
+          "name": "order_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ticket_status": {
+          "name": "ticket_status",
+          "type": "ticketStatus",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject": {
+          "name": "subject",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tickets_order_id_orders_id_fk": {
+          "name": "tickets_order_id_orders_id_fk",
+          "tableFrom": "tickets",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "tickets_user_id_users_id_fk": {
+          "name": "tickets_user_id_users_id_fk",
+          "tableFrom": "tickets",
+          "tableTo": "users",
+          "columnsFrom": [
+            "user_id"
           ],
           "columnsTo": [
             "id"
@@ -681,12 +1242,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "implantattribute": {
-          "name": "implantattribute",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "additionalscan": {
           "name": "additionalscan",
           "type": "integer",
@@ -695,15 +1250,31 @@
         },
         "volume": {
           "name": "volume",
-          "type": "integer",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
-        "connection": {
-          "name": "connection",
+        "isDeleted": {
+          "name": "isDeleted",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -760,19 +1331,6 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "tooth_implantattribute_implantattribute_id_fk": {
-          "name": "tooth_implantattribute_implantattribute_id_fk",
-          "tableFrom": "tooth",
-          "tableTo": "implantattribute",
-          "columnsFrom": [
-            "implantattribute"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
         "tooth_additionalscan_additionalscan_id_fk": {
           "name": "tooth_additionalscan_additionalscan_id_fk",
           "tableFrom": "tooth",
@@ -785,80 +1343,10 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "tooth_volume_volume_id_fk": {
-          "name": "tooth_volume_volume_id_fk",
-          "tableFrom": "tooth",
-          "tableTo": "volume",
-          "columnsFrom": [
-            "volume"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "tooth_category_unique": {
-          "name": "tooth_category_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "category"
-          ]
-        },
-        "tooth_device_unique": {
-          "name": "tooth_device_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "device"
-          ]
-        },
-        "tooth_materialshade_unique": {
-          "name": "tooth_materialshade_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "materialshade"
-          ]
-        },
-        "tooth_implant_unique": {
-          "name": "tooth_implant_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "implant"
-          ]
-        },
-        "tooth_implantattribute_unique": {
-          "name": "tooth_implantattribute_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "implantattribute"
-          ]
-        },
-        "tooth_additionalscan_unique": {
-          "name": "tooth_additionalscan_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "additionalscan"
-          ]
-        },
-        "tooth_volume_unique": {
-          "name": "tooth_volume_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "volume"
-          ]
-        },
-        "tooth_connection_unique": {
-          "name": "tooth_connection_unique",
-          "nullsNotDistinct": false,
-          "columns": [
-            "connection"
-          ]
-        }
-      },
+      "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
       "isRLSEnabled": false
@@ -965,6 +1453,37 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.vip": {
+      "name": "vip",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "price": {
+          "name": "price",
+          "type": "numeric(10, 2)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.volume": {
       "name": "volume",
       "schema": "",
@@ -978,6 +1497,12 @@
         "title": {
           "name": "title",
           "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "defaultvalue": {
+          "name": "defaultvalue",
+          "type": "numeric(10, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -998,6 +1523,27 @@
           "type": "numeric(10, 2)",
           "primaryKey": false,
           "notNull": false
+        },
+        "isDeleted": {
+          "name": "isDeleted",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "createdAt": {
+          "name": "createdAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updatedAt": {
+          "name": "updatedAt",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -1038,6 +1584,15 @@
       "values": [
         "male",
         "female"
+      ]
+    },
+    "public.ticketStatus": {
+      "name": "ticketStatus",
+      "schema": "public",
+      "values": [
+        "open",
+        "pending",
+        "close"
       ]
     },
     "public.role": {

@@ -51,7 +51,7 @@ export const updateUser = async (req: Request, res: Response) => {
     } catch (err) {
       return errorResponse(res, 401, "توکن نامعتبر است", null);
     }
-    
+
     const {
       name,
       lastName,
@@ -75,6 +75,96 @@ export const updateUser = async (req: Request, res: Response) => {
       })
       .where(eq(users.email, email));
     return successResponse(res, 200, {}, "user updated successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const getUsersList = async (req: Request, res: Response) => {
+  try {
+    const usersList = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        specaility: users.specaility,
+        laboratoryName: users.laboratoryName,
+        role: users.role,
+      })
+      .from(users);
+    return successResponse(
+      res,
+      200,
+      usersList,
+      "users list fetched successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const getUserById = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        specaility: users.specaility,
+        laboratoryName: users.laboratoryName,
+        phoneNumber: users.phoneNumber,
+        country: users.country,
+        postalCode: users.postalCode,
+      })
+      .from(users)
+      .where(eq(users.id, Number(id)));
+    return successResponse(res, 200, user[0], "user fetched successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const editUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      lastName,
+      specaility,
+      laboratoryName,
+      phoneNumber,
+      country,
+      postalCode,
+    } = req.body;
+
+    const updatedUser = await db
+      .update(users)
+      .set({
+        name,
+        lastName,
+        specaility,
+        laboratoryName,
+        phoneNumber,
+        country,
+        postalCode,
+      })
+      .where(eq(users.id, Number(id)));
+
+    return successResponse(res, 200, updatedUser, "User updated successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const deleteUser = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    await db.delete(users).where(eq(users.id, Number(id)));
+    return successResponse(res, 200, {}, "User deleted successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
   }

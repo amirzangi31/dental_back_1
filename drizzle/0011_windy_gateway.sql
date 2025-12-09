@@ -1,1 +1,0 @@
-ALTER TABLE "implant" ALTER COLUMN "parent_id" SET DEFAULT null;
