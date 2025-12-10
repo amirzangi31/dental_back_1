@@ -9,8 +9,11 @@ import {
   orderListAdmin,
   submitOrder,
   updateOrder,
+  downloadAdminFile,
 } from "./order.controller";
 import { uploadSingle } from "../../../middleware/upload";
+import { uploadAdminOrderFile } from "../../../middleware/adminOrderUpload";
+import { isAdmin } from "../../../middleware/isAdmin";
 
 const router = express.Router();
 
@@ -21,5 +24,6 @@ router.put("/submitorderwithuser/:id", auth, uploadSingle("file"), submitOrder);
 router.get("/orderlist", auth, orderList);
 router.get("/orders/dropdown", auth, orderDropDown);
 router.get("/orderlistadmin", auth, orderListAdmin);
-router.put("/changeorderstatus", auth, uploadSingle("file"), changeOrderStatus);
+router.put("/changeorderstatus", auth, isAdmin, uploadAdminOrderFile("file"), changeOrderStatus);
+router.get("/download-admin-file/:id", auth, downloadAdminFile);
 export default router;

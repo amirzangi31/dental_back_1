@@ -14,7 +14,8 @@ import { additionalscan } from "../../../db/schema/additionalscan";
 import { volume } from "../../../db/schema/volume";
 import { color } from "../../../db/schema/color";
 import { files } from "../../../db/schema/files";
-
+import path from "path";
+import { vip } from "../../../db/schema/vip";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -135,7 +136,11 @@ export const createOrder = async (req: Request, res: Response) => {
         price: total,
       };
     });
-    console.log(finalTeeth);
+
+    const vipPrice = await db
+      .select({ price: vip.price })
+      .from(vip)
+      .where(eq(vip.id, +vip));
     return successResponse(
       res,
       201,
@@ -143,6 +148,7 @@ export const createOrder = async (req: Request, res: Response) => {
         order: newOrder,
         teeth: finalTeeth,
         teethIds,
+        vip: vipPrice[0].price,
       },
       "سفارش با موفقیت ایجاد شد"
     );
@@ -161,7 +167,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
     if (order.length === 0) {
       return errorResponse(res, 404, "Order not found", null);
     }
-    if (order[0].user_id !== user.userId) {
+    if (order[0].user_id !== user.userId && user.role !== "admin") {
       return errorResponse(
         res,
         403,
@@ -227,12 +233,14 @@ export const getOrderWithId = async (req: Request, res: Response) => {
       };
     });
 
+    const vipPrice = await db.select({ price: vip.price }).from(vip);
     return successResponse(
       res,
       200,
       {
         order: order[0],
         teeth: teethDataWithOrder,
+        vip: vipPrice[0]?.price || 0,
       },
       "Order fetched successfully"
     );
@@ -385,7 +393,10 @@ export const updateOrder = async (req: Request, res: Response) => {
       })
       .where(eq(orders.id, +id))
       .returning();
-
+    const vipPrice = await db
+      .select({ price: vip.price })
+      .from(vip)
+      .where(eq(vip.id, +vip));
     return successResponse(
       res,
       200,
@@ -393,6 +404,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         order: updatedOrder,
         teeth: finalTeeth,
         teethIds,
+        vip: vipPrice[0].price,
       },
       "Order updated successfully"
     );
@@ -608,12 +620,11 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .from(orders)
       .where(eq(orders.id, +orderId));
     if (!order) return errorResponse(res, 404, "Order not found", null);
-    console.log(totalPrice);
     await db
       .update(orders)
       .set({
         status: status as OrderStatus,
-        file: file ? file.path : null,
+        adminFile: file ? file.path : null,
         totalaprice: totalPrice
           ? String(totalPrice)
           : order?.totalaprice || "0.00",
@@ -628,6 +639,60 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       "Order status changed successfully"
     );
   } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const downloadAdminFile = async (req: Request, res: Response) => {
+  try {
+    const orderId = req.params.id;
+    const user = (req as any).user;
+
+    const [order] = await db
+      .select({ adminFile: orders.adminFile, user_id: orders.user_id })
+      .from(orders)
+      .where(eq(orders.id, +orderId));
+
+    if (!order) {
+      return errorResponse(res, 404, "Order not found", null);
+    }
+
+    if (user.userId !== order.user_id && user.role === "user") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to download this file",
+        null
+      );
+    }
+
+    if (!order.adminFile) {
+      return errorResponse(
+        res,
+        404,
+        "Admin file not found for this order",
+        null
+      );
+    }
+    await db
+      .update(orders)
+      .set({
+        isDelivered: true,
+        deliveryDate: new Date(),
+        status: "finaldelivery" as OrderStatus,
+      })
+      .where(eq(orders.id, +orderId));
+
+    const filePath = path.join(process.cwd(), order.adminFile);
+
+    return res.download(filePath, (err) => {
+      if (err) {
+        console.error("Error downloading file:", err);
+        return errorResponse(res, 500, "Error in file download", err);
+      }
+    });
+  } catch (error) {
+    console.error("Error in downloadAdminFile:", error);
     return errorResponse(res, 500, "Internal server error", error);
   }
 };

@@ -179,6 +179,7 @@ export const createTicketMessage = async (req: Request, res: Response) => {
         })
         .returning();
     }
+    
     const msg = await db
       .insert(ticketMessages)
       .values({
