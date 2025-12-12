@@ -3,10 +3,15 @@ import { db } from "../../../db";
 import { implantattribute } from "../../../db/schema/implantattribute";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { getPagination } from "../../../utils/pagination";
 
 export const getImplantAttribute = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(implantattribute.createdAt) : desc(implantattribute.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(implantattribute);
     const implantAttributeList = await db
       .select({
         id: implantattribute.id,
@@ -15,11 +20,22 @@ export const getImplantAttribute = async (req: Request, res: Response) => {
         color: implantattribute.color,
         file: implantattribute.file,
       })
-      .from(implantattribute);
+      .from(implantattribute)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     return successResponse(
       res,
       200,
-      implantAttributeList,
+      {
+        items: implantAttributeList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "ImplantAttribute fetched successfully"
     );
   } catch (error) {

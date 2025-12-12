@@ -3,10 +3,15 @@ import { db } from "../../../db";
 import { device } from "../../../db/schema/device";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { getPagination } from "../../../utils/pagination";
 
 export const getDevice = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(device.createdAt) : desc(device.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(device);
     const deviceList = await db
       .select({
         id: device.id,
@@ -14,11 +19,22 @@ export const getDevice = async (req: Request, res: Response) => {
         price: device.price,
         file: device.file,
       })
-      .from(device);
+      .from(device)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     return successResponse(
       res,
       200,
-      deviceList,
+      {
+        items: deviceList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "Device fetched successfully"
     );
   } catch (error) {

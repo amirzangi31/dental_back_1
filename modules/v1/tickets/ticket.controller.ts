@@ -2,20 +2,107 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { ticketMessages, tickets } from "../../../db/schema/ticket";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { orders } from "../../../db/schema/orders";
 import { files } from "../../../db/schema/files";
+import { getPagination } from "../../../utils/pagination";
+
+
 
 export const getTickets = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
 
-    const list = await db
-      .select()
+    const { limit, offset, sort } = getPagination(req);
+
+    const orderByClause =
+      sort === "asc" ? asc(tickets.createdAt) : desc(tickets.createdAt);
+
+    // گرفتن تیکت‌ها
+    const ticketsList = await db
+      .select({
+        id: tickets.id,
+        orderId: tickets.orderId,
+        subject: tickets.subject,
+        ticketStatus: tickets.ticketStatus,
+        createdAt: tickets.createdAt,
+        updatedAt: tickets.updatedAt,
+        order: {
+          id: orders.id,
+          status: orders.status,
+        },
+      })
+      .from(tickets)
+      .leftJoin(orders, eq(tickets.orderId, orders.id))
+      // .where(eq(tickets.userId, user.userId))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
+
+    // گرفتن آخرین پیام برای هر تیکت
+    const ticketIds = ticketsList.map((t) => t.id);
+    
+    // گرفتن همه پیام‌های مربوط به این تیکت‌ها و سپس فیلتر کردن آخرین پیام هر تیکت
+    const allMessages = ticketIds.length > 0
+      ? await db
+          .select({
+            ticketId: ticketMessages.ticketId,
+            message: ticketMessages.message,
+            createdAt: ticketMessages.createdAt,
+            senderType: ticketMessages.senderType,
+            senderId: ticketMessages.senderId,
+            file: ticketMessages.file,
+          })
+          .from(ticketMessages)
+          .where(inArray(ticketMessages.ticketId, ticketIds))
+          .orderBy(desc(ticketMessages.createdAt))
+      : [];
+
+    // گروه‌بندی پیام‌ها بر اساس ticketId و گرفتن اولین (آخرین) پیام هر تیکت
+    const lastMessageMap = new Map<number, typeof allMessages[0]>();
+    for (const msg of allMessages) {
+      if (!lastMessageMap.has(msg.ticketId)) {
+        lastMessageMap.set(msg.ticketId, msg);
+      }
+    }
+
+    // ترکیب تیکت‌ها با آخرین پیام
+    const list = ticketsList.map((ticket) => {
+      const lastMsg = lastMessageMap.get(ticket.id);
+      return {
+        ...ticket,
+        lastMessage: lastMsg
+          ? {
+              message: lastMsg.message,
+              createdAt: lastMsg.createdAt,
+              senderType: lastMsg.senderType,
+              senderId: lastMsg.senderId,
+              file: lastMsg.file,
+            }
+          : null,
+      };
+    });
+
+    // total count
+    const [{ total }] = await db
+      .select({ total: count() })
       .from(tickets)
       .where(eq(tickets.userId, user.userId));
 
-    return successResponse(res, 200, list, "Tickets fetched successfully");
+    return successResponse(
+      res,
+      200,
+      {
+        items: list,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Tickets fetched successfully"
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
@@ -25,9 +112,23 @@ export const getTicketByOrderId = async (req: Request, res: Response) => {
     const orderId = Number(req.params.orderId);
 
     const ticketInfo = await db
-      .select()
+      .select({
+        id: tickets.id,
+        orderId: tickets.orderId,
+        userId: tickets.userId,
+        ticketStatus: tickets.ticketStatus,
+        subject: tickets.subject,
+        createdAt: tickets.createdAt,
+        updatedAt: tickets.updatedAt,
+        order: {
+          id: orders.id,
+          status: orders.status,
+        },
+      })
       .from(tickets)
-      .where(eq(tickets.orderId, orderId));
+      .where(eq(tickets.orderId, orderId))
+      .leftJoin(orders, eq(tickets.orderId, orders.id))
+      .orderBy(desc(tickets.createdAt));
 
     if (!ticketInfo.length)
       return errorResponse(res, 404, "Ticket not found", null);
@@ -42,14 +143,15 @@ export const getTicketByOrderId = async (req: Request, res: Response) => {
         file: ticketMessages.file,
       })
       .from(ticketMessages)
-      .where(eq(ticketMessages.ticketId, ticketInfo[0].id));
+      .where(eq(ticketMessages.ticketId, ticketInfo[0].id))
+      .orderBy(asc(ticketMessages.createdAt));
 
     return successResponse(
       res,
       200,
       {
         ...ticketInfo[0],
-        messages,
+        messages : messages ,
       },
       "Ticket fetched successfully"
     );
@@ -59,7 +161,7 @@ export const getTicketByOrderId = async (req: Request, res: Response) => {
 };
 export const createTicket = async (req: Request, res: Response) => {
   try {
-    const { orderId,  subject, message } = req.body;
+    const { orderId, subject, message } = req.body;
     const user = (req as any).user;
     const file = req.file;
 
@@ -85,7 +187,7 @@ export const createTicket = async (req: Request, res: Response) => {
       .insert(tickets)
       .values({
         orderId,
-        userId : user.userId,
+        userId: user.userId,
         subject,
         ticketStatus: "open",
       })
@@ -179,7 +281,7 @@ export const createTicketMessage = async (req: Request, res: Response) => {
         })
         .returning();
     }
-    
+
     const msg = await db
       .insert(ticketMessages)
       .values({

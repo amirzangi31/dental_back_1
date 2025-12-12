@@ -9,7 +9,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { color } from "./color";
 
-export const materialShadeCategoryEnum = ["A", "B", "C", "D"] as const;
+export const materialShadeCategoryEnum = ["A", "B", "C", "D" , "M"] as const;
 export type MaterialShadeCategory = (typeof materialShadeCategoryEnum)[number];
 export const materialShadeCategoryPgEnum = pgEnum(
   "materialshadecategory",

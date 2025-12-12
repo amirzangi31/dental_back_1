@@ -16,6 +16,7 @@ import implantRoutes from "./modules/v1/implant/implant.routes";
 import orderRoutes from "./modules/v1/order/order.routes";
 import vipRoutes from "./modules/v1/vip/vip.routes";
 import ticketRoutes from "./modules/v1/tickets/ticket.routes";
+import paymentRoutes from "./modules/v1/payment/payment.routes";
 const app = express();
 app.use(express.json());
 app.use(express.json());
@@ -42,6 +43,7 @@ app.use("/api/materialshade", materialShadeRoutes);
 app.use("/api/implantattribute", implantAttributeRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/vip", vipRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/uploads", express.static("uploads"));
 app.use((req: Request, res: Response) => {
   console.log("this path is not found:", req.path);

@@ -6,6 +6,7 @@ import {
   timestamp,
   pgEnum,
   text,
+  boolean,
 } from "drizzle-orm/pg-core";
 import { orders } from "./orders";
 import { users } from "./users";
@@ -13,6 +14,7 @@ import { users } from "./users";
 export const statusEnum = ["open", "pending", "close"] as const;
 export type TicketStatus = (typeof statusEnum)[number];
 export const TicketStatusPgEnum = pgEnum("ticketStatus", statusEnum);
+
 export const tickets = pgTable("tickets", {
   id: serial("id").primaryKey(),
 
@@ -25,7 +27,6 @@ export const tickets = pgTable("tickets", {
     .references(() => users.id),
 
   ticketStatus: TicketStatusPgEnum("ticket_status").$type<TicketStatus>(),
-
   subject: varchar("subject", { length: 255 }),
 
   createdAt: timestamp("created_at").defaultNow(),

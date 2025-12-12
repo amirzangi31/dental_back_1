@@ -2,20 +2,36 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { categorycolor } from "../../../db/schema/categorycolor";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { getPagination } from "../../../utils/pagination";
 
 export const getCategoryColor = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(categorycolor.createdAt) : desc(categorycolor.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(categorycolor);
     const categoryColorList = await db
       .select({
         id: categorycolor.id,
         title: categorycolor.title,
       })
-      .from(categorycolor);
+      .from(categorycolor)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     return successResponse(
       res,
       200,
-      categoryColorList,
+      {
+        items: categoryColorList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "Category colors fetched successfully"
     );
   } catch (error) {

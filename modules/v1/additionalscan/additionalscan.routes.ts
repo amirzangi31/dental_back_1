@@ -4,6 +4,8 @@ import {
   createAdditionalscan,
   deleteAdditionalscan,
   getAdditionalscan,
+  getAdditionalscanByCategory,
+  getAdditionalscanDropdown,
   updateAdditionalscan,
 } from "./additionalscan.controller";
 import { validate } from "../../../middleware/schemaValidate";
@@ -31,6 +33,8 @@ router.put(
   validate(updateAdditionalscanSchema),
   updateAdditionalscan
 );
+router.get("/additionalscans/dropdown", auth, getAdditionalscanDropdown);
+router.get("/additionalscans/category/:category", auth, getAdditionalscanByCategory);
 router.delete("/additionalscan/:id", auth, deleteAdditionalscan);
 
 export default router;

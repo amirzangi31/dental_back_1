@@ -4,7 +4,7 @@ import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
 import { orders, OrderStatus, orderTeeth } from "../../../db/schema/orders";
 import { tooth } from "../../../db/schema/tooth";
-import { eq, inArray } from "drizzle-orm";
+import { asc, count, desc, eq, inArray } from "drizzle-orm";
 import { calculateTeethTotalPrice } from "../../../utils/calculateTeethPrice";
 import { category } from "../../../db/schema/category";
 import { device } from "../../../db/schema/device";
@@ -16,6 +16,7 @@ import { color } from "../../../db/schema/color";
 import { files } from "../../../db/schema/files";
 import path from "path";
 import { vip } from "../../../db/schema/vip";
+import { getPagination } from "../../../utils/pagination";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -465,11 +466,22 @@ export const submitOrder = async (req: Request, res: Response) => {
 export const orderList = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(orders)
+      .where(eq(orders.user_id, user.userId));
 
     const ordersList = await db
       .select()
       .from(orders)
-      .where(eq(orders.user_id, user.userId));
+      .where(eq(orders.user_id, user.userId))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
 
     if (!ordersList.length) {
       return successResponse(res, 200, [], "Orders fetched successfully");
@@ -509,7 +521,15 @@ export const orderList = async (req: Request, res: Response) => {
     return successResponse(
       res,
       200,
-      ordersWithCategories,
+      {
+        items: ordersWithCategories,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "Orders fetched successfully"
     );
   } catch (error) {
@@ -520,6 +540,14 @@ export const orderList = async (req: Request, res: Response) => {
 export const orderDropDown = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(orders)
+      .where(eq(orders.user_id, user.userId));
 
     const ordersList = await db
       .select({
@@ -527,9 +555,24 @@ export const orderDropDown = async (req: Request, res: Response) => {
         title: orders.patientname,
       })
       .from(orders)
-      .where(eq(orders.user_id, user.userId));
+      .where(eq(orders.user_id, user.userId))
+      .orderBy(orderByClause)
+      
 
-    return successResponse(res, 200, ordersList, "Orders fetched successfully");
+    return successResponse(
+      res,
+      200,
+      {
+        items: ordersList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Orders fetched successfully"
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
@@ -546,7 +589,18 @@ export const orderListAdmin = async (req: Request, res: Response) => {
         null
       );
     }
-    const order = await db.select().from(orders);
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
+
+    const [{ total }] = await db.select({ total: count() }).from(orders);
+
+    const order = await db
+      .select()
+      .from(orders)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     const ordersWithCategories = await Promise.all(
       order.map(async (order) => {
         const teethRelations = await db
@@ -581,7 +635,15 @@ export const orderListAdmin = async (req: Request, res: Response) => {
     return successResponse(
       res,
       200,
-      ordersWithCategories,
+      {
+        items: ordersWithCategories,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "Orders fetched successfully"
     );
   } catch (error) {

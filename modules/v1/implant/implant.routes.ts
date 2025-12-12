@@ -9,6 +9,7 @@ import {
   updateImplant,
   deleteImplant,
   getImplantDropdown,
+  getImplantByCategory,
 } from "./implant.controller";
 
 import { validate } from "../../../middleware/schemaValidate";
@@ -19,5 +20,5 @@ router.get("/implants/dropdown", auth, getImplantDropdown);
 router.post("/implant", auth, uploadSingle("file"), validate(createImplantSchema), createImplant);
 router.put("/implant/:id", auth, uploadSingle("file"), validate(updateImplantSchema), updateImplant);
 router.delete("/implant/:id", auth, deleteImplant);
-
+router.get("/implants/category/:category", auth, getImplantByCategory);
 export default router;

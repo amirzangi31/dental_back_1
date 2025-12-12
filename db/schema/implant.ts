@@ -8,6 +8,7 @@ import {
   timestamp,
 } from "drizzle-orm/pg-core";
 import { color } from "./color";
+import { category } from "./category";
 
 export const implant: any = pgTable("implant", {
   id: serial("id").primaryKey(),
@@ -15,6 +16,7 @@ export const implant: any = pgTable("implant", {
   price: decimal("price", { precision: 10, scale: 2 }),
   color: integer("color").references(() => color.id),
   file: text("file"),
+  category: integer("category").references(() => category.id),
   parent_id: integer("parent_id")
     .references(() => implant.id)
     .default(null as any),

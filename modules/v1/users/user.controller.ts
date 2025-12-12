@@ -3,7 +3,8 @@ import { verify } from "jsonwebtoken";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
 import { users } from "../../../db/schema/users";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
+import { getPagination } from "../../../utils/pagination";
 
 export const getUser = async (req: Request, res: Response) => {
   try {
@@ -82,6 +83,10 @@ export const updateUser = async (req: Request, res: Response) => {
 
 export const getUsersList = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(users.createdAt) : desc(users.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(users);
     const usersList = await db
       .select({
         id: users.id,
@@ -92,11 +97,22 @@ export const getUsersList = async (req: Request, res: Response) => {
         laboratoryName: users.laboratoryName,
         role: users.role,
       })
-      .from(users);
+      .from(users)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     return successResponse(
       res,
       200,
-      usersList,
+      {
+        items: usersList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "users list fetched successfully"
     );
   } catch (error) {

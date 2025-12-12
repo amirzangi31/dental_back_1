@@ -3,13 +3,17 @@ import { db } from "../../../db";
 import { category } from "../../../db/schema/category";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
-import path from "path";
+import { asc, count, desc, eq } from "drizzle-orm";
 import { catalog } from "../../../db/schema/catalog";
 import { color } from "../../../db/schema/color";
+import { getPagination } from "../../../utils/pagination";
 
 export const getCategory = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(category.createdAt) : desc(category.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(category);
     const categoryList = await db
       .select({
         id: category.id,
@@ -24,11 +28,43 @@ export const getCategory = async (req: Request, res: Response) => {
         catalog: {
           id: catalog.id,
           title: catalog.title,
-        }, 
+        },
       })
       .from(category)
       .leftJoin(catalog, eq(category.catalog, catalog.id))
-      .leftJoin(color, eq(category.color, color.id));
+      .leftJoin(color, eq(category.color, color.id))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
+    return successResponse(
+      res,
+      200,
+      {
+        items: categoryList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Category fetched successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const getCategoryDropDown = async (req: Request, res: Response) => {
+  try {
+    const categoryList = await db
+      .select({
+        id: category.id,
+        title: category.title,
+      })
+      .from(category)
+      .orderBy(asc(category.title));
+      
     return successResponse(
       res,
       200,
@@ -86,7 +122,7 @@ export const createCategory = async (req: Request, res: Response) => {
 
 export const updateCategory = async (req: Request, res: Response) => {
   try {
-    const { title, description, price, catalog , color } = req.body;
+    const { title, description, price, catalog, color } = req.body;
     const file = req.file;
 
     const updateData: any = {};

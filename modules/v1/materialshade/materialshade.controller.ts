@@ -2,30 +2,46 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { materialshade } from "../../../db/schema/materialshade";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import { color } from "../../../db/schema/color";
+import { getPagination } from "../../../utils/pagination";
 
 export const getMaterialShade = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(materialshade.createdAt) : desc(materialshade.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(materialshade);
     const materialShadeList = await db
-    .select({
-      id: materialshade.id,
-      title: materialshade.title,
-      price: materialshade.price,
-      category: materialshade.category,
-      color: {
-        id: color.id,
-        code: color.code,
-        title: color.title,
-      },
-    })
-    .from(materialshade)
-    .leftJoin(color, eq(materialshade.color, color.id));
+      .select({
+        id: materialshade.id,
+        title: materialshade.title,
+        price: materialshade.price,
+        category: materialshade.category,
+        color: {
+          id: color.id,
+          code: color.code,
+          title: color.title,
+        },
+      })
+      .from(materialshade)
+      .leftJoin(color, eq(materialshade.color, color.id))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     
     return successResponse(
       res,
       200,
-      materialShadeList,
+      {
+        items: materialShadeList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "MaterialShade fetched successfully"
     );
   } catch (error) {

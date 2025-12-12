@@ -2,27 +2,82 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { catalog } from "../../../db/schema/catalog";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq } from "drizzle-orm";
 import { category } from "../../../db/schema/category";
 import { color } from "../../../db/schema/color";
+import { getPagination } from "../../../utils/pagination";
 
 export const getCatalog = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(catalog);
     const rows = await db
       .select({
         id: catalog.id,
         title: catalog.title,
       })
-      .from(catalog);
+      .from(catalog)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
 
-    return successResponse(res, 200, rows, "Catalog fetched successfully");
+    return successResponse(
+      res,
+      200,
+      {
+        items: rows,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Catalog fetched successfully"
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
 
+export const catalogDropDown = async (req: Request, res: Response) => {
+  try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(catalog);
+    const rows = await db.select({ id: catalog.id, title: catalog.title }).from(catalog).orderBy(orderByClause)
+    return successResponse(
+      res,
+      200,
+      {
+        items: rows,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Catalog fetched successfully"
+    );
+  }
+  catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+
 export const getCatalogWithCategory = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const catalogOrderBy =
+      sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
+    const categoryOrderBy =
+      sort === "asc" ? asc(category.createdAt) : desc(category.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(catalog);
     const rows = await db
       .select({
         id: catalog.id,
@@ -38,7 +93,10 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       })
       .from(catalog)
       .leftJoin(category, eq(catalog.id, category.catalog))
-      .leftJoin(color, eq(category.color, color.id));
+      .leftJoin(color, eq(category.color, color.id))
+      .orderBy(catalogOrderBy, categoryOrderBy)
+      .limit(limit)
+      .offset(offset);
     const catalogMap: Record<string, any> = {};
     for (const row of rows) {
       if (!row.id) continue;
@@ -60,7 +118,20 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       }
     }
     const catalogList = Object.values(catalogMap);
-    return successResponse(res, 200, catalogList, "Catalog fetched successfully");
+    return successResponse(
+      res,
+      200,
+      {
+        items: catalogList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Catalog fetched successfully"
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }

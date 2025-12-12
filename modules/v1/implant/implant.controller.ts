@@ -3,14 +3,19 @@ import { db } from "../../../db";
 import { implant } from "../../../db/schema/implant";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import path from "path";
 import { catalog } from "../../../db/schema/catalog";
 import { color } from "../../../db/schema/color";
+import { getPagination } from "../../../utils/pagination";
 
 export const getImplant = async (req: Request, res: Response) => {
   try {
     const { typeList = "1" } = req.query; // 1 = list with children, 2 = list without children
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(implant.createdAt) : desc(implant.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(implant);
     const rows = await db
       .select({
         id: implant.id,
@@ -18,10 +23,14 @@ export const getImplant = async (req: Request, res: Response) => {
         price: implant.price,
         file: implant.file,
         parent_id: implant.parent_id,
-        color: color.code,
+        color: color.code,  
+        category: implant.category,
       })
       .from(implant)
-      .leftJoin(color, eq(implant.color, color.id));
+      .leftJoin(color, eq(implant.color, color.id))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     const map = new Map();
 
     for (const row of rows) {
@@ -41,7 +50,62 @@ export const getImplant = async (req: Request, res: Response) => {
     return successResponse(
       res,
       200,
-      typeList === "1" ? tree : rows,
+      {
+        items: typeList === "1" ? tree : rows,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Implant fetched successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const getImplantByCategory = async (req: Request, res: Response) => {
+  try {
+    const { category, sort } = req.params;
+    const orderByClause =
+      sort === "asc" ? asc(implant.createdAt) : desc(implant.createdAt);
+    const categoryNumber = parseInt(category);
+      const rows = await db
+      .select({
+        id: implant.id,
+        title: implant.title,
+        price: implant.price,
+        file: implant.file,
+        parent_id: implant.parent_id,
+        color: color.code,  
+        category: implant.category,
+      })
+      .from(implant)
+      .leftJoin(color, eq(implant.color, color.id))
+      .where(or(eq(implant.category, categoryNumber), isNull(implant.category)))
+      .orderBy(orderByClause)
+      const map = new Map();
+
+      for (const row of rows) {
+        map.set(row.id, { ...row, children: [] });
+      }
+  
+      const tree = [];
+  
+      for (const row of rows) {
+        if (row.parent_id === null) {
+          tree.push(map.get(row.id));
+        } else {
+          map.get(row.parent_id)?.children.push(map.get(row.id));
+        }
+      }
+  
+    return successResponse(
+      res,
+      200,
+      tree,
       "Implant fetched successfully"
     );
   } catch (error) {
@@ -51,16 +115,30 @@ export const getImplant = async (req: Request, res: Response) => {
 
 export const getImplantDropdown = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(implant.createdAt) : desc(implant.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(implant);
     const rows = await db
       .select({
         id: implant.id,
         title: implant.title,
       })
-      .from(implant);
+      .from(implant)
+      .orderBy(orderByClause);
+
     return successResponse(
       res,
       200,
-      rows,
+      {
+        items: rows,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "Implant dropdown fetched successfully"
     );
   } catch (error) {
@@ -70,7 +148,7 @@ export const getImplantDropdown = async (req: Request, res: Response) => {
 
 export const createImplant = async (req: Request, res: Response) => {
   try {
-    const { title, description, price, color, parent_id } = req.body;
+    const { title, description, price, color, parent_id, category } = req.body;
     const file = req.file;
 
     if (!file) {
@@ -95,14 +173,12 @@ export const createImplant = async (req: Request, res: Response) => {
       price: price ? String(price) : null,
       color: color ? parseInt(color) : null,
       file: file.path,
+      category: category ? parseInt(category) : null,
     };
 
-    if (
-      parent_id !== "0"
-    ) {
-     
+    if (parent_id !== "0") {
       values.parent_id = parseInt(parent_id);
-    }else {
+    } else {
       values.parent_id = null;
     }
 
@@ -121,15 +197,14 @@ export const createImplant = async (req: Request, res: Response) => {
 
 export const updateImplant = async (req: Request, res: Response) => {
   try {
-    const { title, description, price, catalog } = req.body;
+    const { title, description, price, catalog, category } = req.body;
     const file = req.file;
-
     const updateData: any = {};
     if (title) updateData.title = title;
     if (description) updateData.description = description;
     if (price) updateData.price = String(price);
     if (catalog) updateData.catalog = parseInt(catalog);
-
+    if (category) updateData.category = parseInt(category);
     if (file) {
       await db.insert(files).values({
         filename: file.filename,
