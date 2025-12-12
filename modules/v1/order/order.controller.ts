@@ -17,6 +17,7 @@ import { files } from "../../../db/schema/files";
 import path from "path";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
+import { payment } from "../../../db/schema/payment";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -30,15 +31,21 @@ export const createOrder = async (req: Request, res: Response) => {
       comment,
       file,
       discount,
-      vip,
+      vip:vipParametr,
       teeth,
       connections,
+      antagonists,
     } = req.body;
 
     const user = (req as any).user;
 
     if (!teeth || !Array.isArray(teeth) || teeth.length === 0) {
-      return errorResponse(res, 400, "حداقل یک دندان باید انتخاب شود", null);
+      return errorResponse(
+        res,
+        400,
+        "At least one tooth must be selected",
+        null
+      );
     }
 
     const teethValues = teeth.map((toothData: any) => ({
@@ -77,8 +84,9 @@ export const createOrder = async (req: Request, res: Response) => {
         comment,
         file,
         discount: discount ? parseInt(discount) : null,
-        vip: vip || false,
+        vip: vipParametr === "true" || false,
         connections: connections || [],
+        antagonists: antagonists || [],
       })
       .returning();
 
@@ -138,10 +146,7 @@ export const createOrder = async (req: Request, res: Response) => {
       };
     });
 
-    const vipPrice = await db
-      .select({ price: vip.price })
-      .from(vip)
-      .where(eq(vip.id, +vip));
+    const [vipPrice] = await db.select({ price: vip.price }).from(vip)
     return successResponse(
       res,
       201,
@@ -149,9 +154,9 @@ export const createOrder = async (req: Request, res: Response) => {
         order: newOrder,
         teeth: finalTeeth,
         teethIds,
-        vip: vipPrice[0].price,
+        vip: vipPrice ? vipPrice.price : 0,
       },
-      "سفارش با موفقیت ایجاد شد"
+      "Order created successfully"
     );
   } catch (error) {
     console.error("Error creating order:", error);
@@ -262,11 +267,11 @@ export const updateOrder = async (req: Request, res: Response) => {
       comment,
       file,
       discount,
-      vip,
+      vip : vipParametr,
       teeth,
       connections,
+      antagonists,
     } = req.body;
-
     const { id } = req.params;
     const user = (req as any).user;
 
@@ -389,15 +394,14 @@ export const updateOrder = async (req: Request, res: Response) => {
         comment,
         file,
         discount: discount ? parseInt(discount, 10) : null,
-        vip: vip || false,
+        vip: vipParametr === "true" || false,
         connections: connections || [],
+        antagonists: antagonists || [],
       })
       .where(eq(orders.id, +id))
       .returning();
-    const vipPrice = await db
-      .select({ price: vip.price })
-      .from(vip)
-      .where(eq(vip.id, +vip));
+    const [vipPrice] = await db.select({ price: vip.price }).from(vip);
+
     return successResponse(
       res,
       200,
@@ -405,7 +409,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         order: updatedOrder,
         teeth: finalTeeth,
         teethIds,
-        vip: vipPrice[0].price,
+        vip: vipPrice ? vipPrice.price : 0,
       },
       "Order updated successfully"
     );
@@ -442,10 +446,15 @@ export const submitOrder = async (req: Request, res: Response) => {
         "You are not authorized to submit this order",
         null
       );
-    if (order[0].status !== "uploadfile")
-      return errorResponse(res, 400, "Order is not in uploadfile status", null);
+      
     if (order[0].paymentstatus)
       return errorResponse(res, 400, "Order is already paid", null);
+
+    await db.insert(payment).values({
+      order_id: +id,
+      type: "uploadfile",
+      status: "pending",
+    });
 
     await db
       .update(orders)
@@ -556,8 +565,7 @@ export const orderDropDown = async (req: Request, res: Response) => {
       })
       .from(orders)
       .where(eq(orders.user_id, user.userId))
-      .orderBy(orderByClause)
-      
+      .orderBy(orderByClause);
 
     return successResponse(
       res,

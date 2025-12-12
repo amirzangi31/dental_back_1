@@ -50,6 +50,20 @@
       "when": 1765539207529,
       "tag": "0006_unusual_bloodstorm",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1765545933692,
+      "tag": "0007_daffy_juggernaut",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1765562921923,
+      "tag": "0008_cynical_moondragon",
+      "breakpoints": true
     }
   ]
 }

@@ -28,6 +28,7 @@ export const getPayments = async (req: Request, res: Response) => {
           id: orders.id,
           status: orders.status,
           paymentstatus: orders.paymentstatus,
+          totalPrice: orders.totalaprice,
         },
       })
       .from(payment)

@@ -24,6 +24,7 @@ export const payment = pgTable("payment", {
   file: text("file"),
   isAccepted: boolean("isAccepted").default(false),
   type: paymentTypePgEnum("type").$type<PaymentType>(),
+  trackingCode: text("trackingCode"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

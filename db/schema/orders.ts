@@ -38,8 +38,11 @@ export const orders = pgTable("orders", {
   patientgender: patientGenderPgEnum("patientgender").$type<PatientGender>(),
   report: integer("report"),
   status: orderStatusPgEnum("status").$type<OrderStatus>(),
-  totalaprice: decimal("totalaprice", { precision: 10, scale: 2 }).default("0.00"),
+  totalaprice: decimal("totalaprice", { precision: 10, scale: 2 }).default(
+    "0.00"
+  ),
   paymentstatus: boolean("paymentstatus").default(false),
+  antagonists: integer("antagonists").array(),
   comment: text("comment"),
   file: text("file"),
   adminFile: text("adminFile"),
@@ -67,4 +70,3 @@ export const orderTeeth = pgTable(
     pk: primaryKey({ columns: [table.orderId, table.toothId] }),
   })
 );
-
