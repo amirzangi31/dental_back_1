@@ -3,7 +3,7 @@ import { verify } from "jsonwebtoken";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
 import { users } from "../../../db/schema/users";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, or } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
 
 export const getUser = async (req: Request, res: Response) => {
@@ -99,6 +99,7 @@ export const getUsersList = async (req: Request, res: Response) => {
       })
       .from(users)
       .orderBy(orderByClause)
+      .where(or(eq(users.role, "doctor") , eq(users.role, "labrator")))
       .limit(limit)
       .offset(offset);
     return successResponse(
@@ -137,7 +138,8 @@ export const getUserById = async (req: Request, res: Response) => {
         postalCode: users.postalCode,
       })
       .from(users)
-      .where(eq(users.id, Number(id)));
+      .where((eq(users.id, Number(id))));
+     
     return successResponse(res, 200, user[0], "user fetched successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);

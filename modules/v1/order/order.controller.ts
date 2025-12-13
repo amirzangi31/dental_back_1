@@ -18,6 +18,7 @@ import path from "path";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
 import { payment } from "../../../db/schema/payment";
+import { users } from "../../../db/schema/users";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -31,7 +32,7 @@ export const createOrder = async (req: Request, res: Response) => {
       comment,
       file,
       discount,
-      vip:vipParametr,
+      vip: vipParametr,
       teeth,
       connections,
       antagonists,
@@ -146,7 +147,7 @@ export const createOrder = async (req: Request, res: Response) => {
       };
     });
 
-    const [vipPrice] = await db.select({ price: vip.price }).from(vip)
+    const [vipPrice] = await db.select({ price: vip.price }).from(vip);
     return successResponse(
       res,
       201,
@@ -267,7 +268,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       comment,
       file,
       discount,
-      vip : vipParametr,
+      vip: vipParametr,
       teeth,
       connections,
       antagonists,
@@ -278,7 +279,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     // ---------- check order ----------
     const order = await db.select().from(orders).where(eq(orders.id, +id));
     if (!order.length) return errorResponse(res, 404, "Order not found", null);
-    if (order[0].user_id !== user.userId)
+    if (order[0].user_id !== user.userId && user.role !== "admin")
       return errorResponse(
         res,
         403,
@@ -287,7 +288,12 @@ export const updateOrder = async (req: Request, res: Response) => {
       );
 
     if (!teeth || !Array.isArray(teeth) || teeth.length === 0)
-      return errorResponse(res, 400, "حداقل یک دندان باید انتخاب شود", null);
+      return errorResponse(
+        res,
+        400,
+        "At least one tooth must be selected",
+        null
+      );
 
     // ---------- remove old teeth ----------
     const oldTeeth = await db
@@ -421,7 +427,8 @@ export const updateOrder = async (req: Request, res: Response) => {
 
 export const submitOrder = async (req: Request, res: Response) => {
   try {
-    const { id, vip, comment } = req.params;
+    const { id } = req.params;
+    const { vip, comment } = req.body;
     const user = (req as any).user;
     const order = await db.select().from(orders).where(eq(orders.id, +id));
     const file = req.file;
@@ -446,23 +453,30 @@ export const submitOrder = async (req: Request, res: Response) => {
         "You are not authorized to submit this order",
         null
       );
-      
+
     if (order[0].paymentstatus)
       return errorResponse(res, 400, "Order is already paid", null);
-
+    const paymentItem = await db
+      .select()
+      .from(payment)
+      .where(eq(payment.order_id, +id));
+    if (paymentItem.length) {
+      return errorResponse(res, 400, "Payment already exists", null);
+    }
     await db.insert(payment).values({
       order_id: +id,
       type: "uploadfile",
       status: "pending",
     });
-
+    console.log(vip);
+    console.log(typeof vip);
     await db
       .update(orders)
       .set({
         comment: comment || null,
         file: file ? file.path : null,
         status: "design" as OrderStatus,
-        vip: vip === "true" || false,
+        vip: vip,
       })
       .where(eq(orders.id, +id));
 
@@ -485,7 +499,22 @@ export const orderList = async (req: Request, res: Response) => {
       .where(eq(orders.user_id, user.userId));
 
     const ordersList = await db
-      .select()
+      .select({
+        id: orders.id,
+        paymentstatus: orders.paymentstatus,
+        comment: orders.comment,
+        file: orders.file,
+        adminFile: orders.adminFile,
+        discount: orders.discount,
+        vip: orders.vip,
+        isDelivered: orders.isDelivered,
+        deliveryDate: orders.deliveryDate,
+        report: orders.report,
+        status: orders.status,
+        totalaprice: orders.totalaprice,
+        title: orders.title,
+        user_id: orders.user_id,
+      })
       .from(orders)
       .where(eq(orders.user_id, user.userId))
       .orderBy(orderByClause)
@@ -493,7 +522,20 @@ export const orderList = async (req: Request, res: Response) => {
       .offset(offset);
 
     if (!ordersList.length) {
-      return successResponse(res, 200, [], "Orders fetched successfully");
+      return successResponse(
+        res,
+        200,
+        {
+          items: [],
+          pagination: {
+            page: 1,
+            limit,
+            total: 0,
+            totalPages: 1,
+          },
+        },
+        "Orders fetched successfully"
+      );
     }
 
     const ordersWithCategories = await Promise.all(
@@ -512,6 +554,15 @@ export const orderList = async (req: Request, res: Response) => {
           .from(tooth)
           .leftJoin(category, eq(tooth.category, category.id))
           .where(inArray(tooth.id, teethIds));
+        const paymentItem = await db
+          .select({
+            id: payment.id,
+            status: payment.status,
+            isAccepted: payment.isAccepted,
+            type: payment.type,
+          })
+          .from(payment)
+          .where(eq(payment.order_id, order.id));
 
         const uniqueCategories = teethCategories.reduce((acc: any[], c) => {
           if (!acc.find((x) => x.categoryId === c.categoryId)) {
@@ -523,6 +574,7 @@ export const orderList = async (req: Request, res: Response) => {
         return {
           ...order,
           categories: uniqueCategories,
+          payment: paymentItem[0] || null,
         };
       })
     );
@@ -633,9 +685,24 @@ export const orderListAdmin = async (req: Request, res: Response) => {
           return acc;
         }, []);
 
+        const paymentItem = await db
+          .select({
+            id: payment.id,
+            status: payment.status,
+            isAccepted: payment.isAccepted,
+            type: payment.type,
+            file: payment.file,
+            trackingCode: payment.trackingCode,
+            description: payment.description,
+            createdAt: payment.createdAt,
+            updatedAt: payment.updatedAt,
+          })
+          .from(payment)
+          .where(eq(payment.order_id, order.id));
         return {
           ...order,
           categories: uniqueCategories,
+          payment: paymentItem[0] || null,
         };
       })
     );
@@ -644,7 +711,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       res,
       200,
       {
-        items: ordersWithCategories,
+        items: ordersWithCategories.filter((item) => item.payment !== null),
         pagination: {
           page: Math.floor(offset / limit) + 1,
           limit,
@@ -690,20 +757,24 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .from(orders)
       .where(eq(orders.id, +orderId));
     if (!order) return errorResponse(res, 404, "Order not found", null);
+
+    const vipPrice = await db.select({ price: vip.price }).from(vip);
+    if (vipPrice.length === 0) {
+      return errorResponse(res, 404, "VIP price not found", null);
+    }
+   
     await db
       .update(orders)
       .set({
         status: status as OrderStatus,
         adminFile: file ? file.path : null,
-        totalaprice: totalPrice
-          ? String(totalPrice)
-          : order?.totalaprice || "0.00",
+        totalaprice: String(Number(totalPrice) + Number(vipPrice[0]?.price)),
       })
       .where(eq(orders.id, +orderId));
     return successResponse(
       res,
       200,
-      {
+      { 
         order: orderId,
       },
       "Order status changed successfully"

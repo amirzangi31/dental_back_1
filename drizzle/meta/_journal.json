@@ -64,6 +64,13 @@
       "when": 1765562921923,
       "tag": "0008_cynical_moondragon",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1765612649600,
+      "tag": "0009_shallow_raider",
+      "breakpoints": true
     }
   ]
 }

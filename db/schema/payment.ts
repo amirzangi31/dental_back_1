@@ -23,6 +23,7 @@ export const payment = pgTable("payment", {
   status: paymentStatusPgEnum("status").$type<PaymentStatus>(),
   file: text("file"),
   isAccepted: boolean("isAccepted").default(false),
+  description: text("description"),
   type: paymentTypePgEnum("type").$type<PaymentType>(),
   trackingCode: text("trackingCode"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

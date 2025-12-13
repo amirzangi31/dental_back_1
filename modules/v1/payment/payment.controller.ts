@@ -10,6 +10,7 @@ import { getPagination } from "../../../utils/pagination";
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const user = (req as any).user;
     const orderByClause =
       sort === "asc" ? asc(payment.createdAt) : desc(payment.createdAt);
 
@@ -22,6 +23,9 @@ export const getPayments = async (req: Request, res: Response) => {
         status: payment.status,
         type: payment.type,
         file: payment.file,
+        trackingCode: payment.trackingCode,
+        isAccepted: payment.isAccepted,
+        description: payment.description,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
         order: {
@@ -32,6 +36,7 @@ export const getPayments = async (req: Request, res: Response) => {
         },
       })
       .from(payment)
+      .where(eq(orders.user_id, user.userId))
       .leftJoin(orders, eq(payment.order_id, orders.id))
       .orderBy(orderByClause)
       .limit(limit)
@@ -172,9 +177,93 @@ export const deletePayment = async (req: Request, res: Response) => {
       return errorResponse(res, 404, "Payment not found", null);
     }
 
-    return successResponse(res, 200, deleted[0], "Payment deleted successfully");
+    return successResponse(
+      res,
+      200,
+      deleted[0],
+      "Payment deleted successfully"
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
 
+export const uploadFileForPayment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { trackingCode } = req.body;
+    const file = req.file;
+    if (!file) {
+      return errorResponse(res, 400, "File is required", null);
+    }
+    if (!trackingCode) {
+      return errorResponse(res, 400, "Tracking code is required", null);
+    }
+    if (!id) {
+      return errorResponse(res, 400, "Payment id is required", null);
+    }
+    const paymentItem = await db
+      .select({
+        userId: orders.user_id,
+      })
+      .from(payment)
+      .where(eq(payment.id, Number(id)))
+      .leftJoin(orders, eq(payment.order_id, orders.id));
+    if (!paymentItem.length) {
+      return errorResponse(res, 404, "Payment not found", null);
+    }
+    const user = (req as any).user;
+
+    if (paymentItem[0].userId !== user.userId) {
+      return errorResponse(res, 403, "You are not authorized to upload file for this payment", null);
+    }
+
+    await db.update(payment).set({
+      file: file.path,
+      trackingCode: trackingCode,
+      isAccepted : false,
+      status: "pending",
+    }).where(eq(payment.id, Number(id)));
+
+    const updatedPayment = await db.select().from(payment).where(eq(payment.id, Number(id)));
+    return successResponse(res, 200, updatedPayment[0], "File uploaded successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+
+export const acceptPayment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { accept  , description  } = req.body;
+    const user = (req as any).user; 
+    if (user.role !== "admin") {
+      return errorResponse(res, 403, "You are not authorized to accept this payment", null);
+    }
+    const paymentItem = await db.select().from(payment).where(eq(payment.id, Number(id)));
+    if (!paymentItem.length) {
+      return errorResponse(res, 404, "Payment not found", null);
+    }
+
+    if(accept) {
+      await db.update(payment).set({
+        isAccepted: true,
+        status: "paid",
+        description: description,
+      }).where(eq(payment.id, Number(id)));
+    }
+    else {
+      await db.update(payment).set({
+        isAccepted: false,
+        description: description,
+        status: "failed",
+      }).where(eq(payment.id, Number(id)));
+    }
+    return successResponse(res, 200, {} , "Payment accepted successfully", );
+
+  }
+  catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+}
