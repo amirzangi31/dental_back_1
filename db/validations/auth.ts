@@ -43,3 +43,18 @@ export const signupSchema = yup.object().shape({
     otherwise: (schema) => schema.notRequired()
   })
 });
+
+export const forgotPasswordSchema = yup.object().shape({
+  email: yup.string().email("Invalid email address").required("Email is required"),
+});
+
+export const resetPasswordSchema = yup.object().shape({
+  email: yup.string().email("Invalid email address").required("Email is required"),
+  otp: yup.string().required("OTP is required"),
+  newPassword: yup.string().min(8, "New password must be at least 8 characters long").required("New password is required"),
+  confirmPassword: yup
+    .string()
+    .min(8, "Confirm Password must be at least 8 characters long")
+    .oneOf([yup.ref("newPassword")], "Confirm Password must match New Password")
+    .required("Confirm Password is required"),
+});

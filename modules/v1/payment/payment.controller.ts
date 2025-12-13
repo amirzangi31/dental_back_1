@@ -1,20 +1,34 @@
 import { Request, Response } from "express";
 import { db } from "../../../db";
-import { payment } from "../../../db/schema/payment";
+import { payment, PaymentStatus } from "../../../db/schema/payment";
 import { orders } from "../../../db/schema/orders";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
-
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const { status } = req.query as { status?: PaymentStatus };
+
     const user = (req as any).user;
+
     const orderByClause =
       sort === "asc" ? asc(payment.createdAt) : desc(payment.createdAt);
 
-    const [{ total }] = await db.select({ total: count() }).from(payment);
+    const whereConditions = [
+      eq(orders.user_id, user.userId),
+    ];
+
+    if (status) {
+      whereConditions.push(eq(payment.status, status));
+    }
+
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(payment)
+      .leftJoin(orders, eq(payment.order_id, orders.id))
+      .where(and(...whereConditions));
 
     const list = await db
       .select({
@@ -36,8 +50,8 @@ export const getPayments = async (req: Request, res: Response) => {
         },
       })
       .from(payment)
-      .where(eq(orders.user_id, user.userId))
       .leftJoin(orders, eq(payment.order_id, orders.id))
+      .where(and(...whereConditions))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);

@@ -1,4 +1,13 @@
-import express, { Request, Response } from "express";
+import express, { Request, Response, NextFunction } from "express";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import mongoSanitize from "express-mongo-sanitize";
+import { xss } from "express-xss-sanitizer";
+import cors from "cors";
+import path from "path";
+import winston from "winston";
+
+// Routes
 import swaggerRoutes from "./modules/v1/apiDoc/swagger.routes";
 import authRoutes from "./modules/v1/auth/auth.routes";
 import catalogRoutes from "./modules/v1/catalog/catalog.routes";
@@ -10,23 +19,111 @@ import deviceRoutes from "./modules/v1/device/device.routes";
 import volumeRoutes from "./modules/v1/volume/volume.routes";
 import materialShadeRoutes from "./modules/v1/materialshade/materialshade.routes";
 import implantAttributeRoutes from "./modules/v1/implantattribute/implantattribute.routes";
-import { setHeaders } from "./middleware/headers";
 import categorycolorRoutes from "./modules/v1/categorycolor/categorycolor.routes";
 import implantRoutes from "./modules/v1/implant/implant.routes";
 import orderRoutes from "./modules/v1/order/order.routes";
 import vipRoutes from "./modules/v1/vip/vip.routes";
 import ticketRoutes from "./modules/v1/tickets/ticket.routes";
 import paymentRoutes from "./modules/v1/payment/payment.routes";
-const app = express();
-app.use(express.json());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Set headers
+// Middleware
+import { setHeaders } from "./middleware/headers";
+
+const app = express();
+
+/* =======================
+   WINSTON LOGGER
+======================= */
+const logger = winston.createLogger({
+  level: "info",
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.printf(
+      (info) => `${info.timestamp} [${info.level.toUpperCase()}]: ${info.message}`
+    )
+  ),
+  transports: [
+    new winston.transports.Console(),
+    new winston.transports.File({ filename: "logs/error.log", level: "error" }),
+    new winston.transports.File({ filename: "logs/combined.log" }),
+  ],
+});
+
+app.use((req: Request, res: Response, next: NextFunction) => {
+  logger.info(`${req.method} ${req.path}`);
+  next();
+});
+
+/* =======================
+   SECURITY MIDDLEWARES
+======================= */
+// Body parser with limit
+app.use(express.json({ limit: "10kb" }));
+app.use(express.urlencoded({ extended: true, limit: "10kb" }));
+
+// Sanitize Mongo queries
+app.use(mongoSanitize());
+
+// XSS protection
+app.use(xss());
+
+// Helmet
+app.use(
+  helmet({
+    contentSecurityPolicy: true,
+    crossOriginEmbedderPolicy: true,
+    crossOriginOpenerPolicy: { policy: "same-origin" },
+    crossOriginResourcePolicy: { policy: "same-origin" },
+  })
+);
+
+// Custom headers
 app.use(setHeaders);
 
+// CORS
+const allowedOrigins = ["https://yourdomain.com"];
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+      else callback(new Error("Not allowed by CORS"));
+    },
+    methods: ["GET", "POST", "PUT", "DELETE"],
+    credentials: true,
+  })
+);
 
-// Swagger routes
+// Rate limiting
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100,
+  message: "Too many requests from this IP, please try again later.",
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use("/api/auth", authLimiter);
+
+// Disable x-powered-by in production
+if (process.env.NODE_ENV === "production") {
+  app.disable("x-powered-by");
+}
+
+// Dev-only debug logger
+if (process.env.NODE_ENV !== "production") {
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    console.log(req.method, req.path, req.body);
+    next();
+  });
+}
+
+/* =======================
+   STATIC FILES (SECURE)
+======================= */
+app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+
+/* =======================
+   ROUTES
+======================= */
 app.use("/api-docs", swaggerRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
@@ -44,18 +141,23 @@ app.use("/api/implantattribute", implantAttributeRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/vip", vipRoutes);
 app.use("/api/payment", paymentRoutes);
-app.use("/uploads", express.static("uploads"));
+
+/* =======================
+   404 HANDLER
+======================= */
 app.use((req: Request, res: Response) => {
-  console.log("this path is not found:", req.path);
-  return res
-    .status(404)
-    .json({ message: "404! Path Not Found. Please check the path/method" });
+  logger.warn(`404 Path Not Found: ${req.method} ${req.path}`);
+  res.status(404).json({
+    message: "404! Path Not Found. Please check the path/method",
+  });
 });
 
-// TODO: Needed Feature
-app.use((req, res) => {
-  console.log(req);
-  console.log(req);
+/* =======================
+   GLOBAL ERROR HANDLER
+======================= */
+app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+  logger.error(`${err.message} - ${req.method} ${req.path}`);
+  res.status(500).json({ message: "Internal Server Error" });
 });
 
 export default app;

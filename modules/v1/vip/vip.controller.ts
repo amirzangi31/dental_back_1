@@ -2,21 +2,37 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { vip } from "../../../db/schema/vip";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { eq } from "drizzle-orm";
+import { desc, asc,   eq, count } from "drizzle-orm";
+import { getPagination } from "../../../utils/pagination";
 
 export const getVip = async (req: Request, res: Response) => {
   try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(vip.createdAt) : desc(vip.createdAt);
+    const [{ total }] = await db.select({ total: count() }).from(vip);
     const vipList = await db
       .select({
         id: vip.id,
         price: vip.price,
         description: vip.description,
       })
-      .from(vip);
+      .from(vip)
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
     return successResponse(
       res,
       200,
-      vipList,
+      {
+        items: vipList,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
       "VIP prices fetched successfully"
     );
   } catch (error) {

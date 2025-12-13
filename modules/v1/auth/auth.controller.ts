@@ -184,16 +184,22 @@ export const signin = async (req: Request, res: Response) => {
       })
       .from(users)
       .where(eq(users.email, email));
+
+    if (!user || user.length === 0) {
+      return errorResponse(res, 400, "Password Or Email is incorrect", null);
+    }
+
+    if (user[0].isDeleted !== 0) {
+      return errorResponse(res, 400, "User is deleted", null);
+    }
+
     const isPasswordCorrect = await compare(password, user[0].password);
 
     if (!isPasswordCorrect) {
       return errorResponse(res, 400, "Password Or Email is incorrect", null);
     }
 
-    if (user.length > 0 && user[0].isDeleted === 0) {
-      return errorResponse(res, 400, "User is deleted", null);
-    }
-
+    // Redis tokens
     await redis.del(`refresh:${user[0].id}`);
     const refreshToken = randomUUID();
     await redis.set(
@@ -202,17 +208,19 @@ export const signin = async (req: Request, res: Response) => {
       "EX",
       parseInt(process.env.REFRESH_TOKEN_TIME as string)
     );
+
     const accessToken = generateAccessToken({
       userId: user[0].id,
       email: user[0].email,
       role: user[0].role,
     });
+
     return successResponse(
       res,
       200,
       {
-        accessToken: accessToken,
-        refreshToken: refreshToken,
+        accessToken,
+        refreshToken,
       },
       "User signed in successfully"
     );
@@ -220,6 +228,7 @@ export const signin = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
+
 
 export const refreshToken = async (req: Request, res: Response) => {
   try {
@@ -254,7 +263,7 @@ export const refreshToken = async (req: Request, res: Response) => {
     }
     if (user.length > 0 && user[0].isDeleted === 1) {
       const refreshTokenRedis = await redis.get(`refresh:${user[0].id}`);
-      
+
       if (!refreshTokenRedis) {
         return errorResponse(
           res,
@@ -335,3 +344,155 @@ export const user = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
+
+export const updateUser = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    
+    const {
+      id,
+      name,
+      lastName,
+      country,
+      postalCode,
+      phoneNumber,
+      specaility,
+      laboratoryName,
+    } = req.body;
+    if(id !== user.userId.toString()) {
+      return errorResponse(res, 400, "You are not authorized to update this user", null);
+    }
+    const updatedUser = await db
+      .update(users)
+      .set({
+        name,
+        lastName,
+        country,
+        postalCode,
+        phoneNumber,
+        specaility,
+        laboratoryName,
+      })
+      .where(eq(users.id, id));
+    return successResponse(res, 200, updatedUser, "User updated successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const forgotPassword = async (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    // Check if user exists
+    const user = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        isDeleted: users.isDeleted,
+      })
+      .from(users)
+      .where(eq(users.email, email));
+
+    if (user.length === 0) {
+      return successResponse(res, 200, null, "If email exists, OTP has been sent");
+    }
+
+    if (user[0].isDeleted === 0) {
+      return errorResponse(res, 400, "User is deleted", null);
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
+      },
+    });
+
+    const mailOptions = {
+      from: process.env.GMAIL_USER || "zangiabadi1378888@gmail.com",
+      to: email,
+      subject: "Password Reset OTP - Dental Art",
+      text: `Your password reset OTP is: ${otp}. This code will expire in 10 minutes.`,
+    };
+
+    // Store OTP in Redis with 10 minutes expiration
+    await redis.set(`forgotPasswordOtp:${email}`, otp, "EX", 600);
+
+    if (typeof transporter !== "undefined") {
+      await transporter.sendMail(mailOptions);
+    } else {
+      console.log("Email sending is not enabled. Code for", email, ":", otp);
+    }
+
+    return successResponse(res, 200, null, "If email exists, OTP has been sent");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const resetPassword = async (req: Request, res: Response) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    // Verify OTP
+    const savedOtp = await redis.get(`forgotPasswordOtp:${email}`);
+    if (!savedOtp) {
+      return errorResponse(res, 400, "OTP expired or not found", null);
+    }
+
+    if (savedOtp !== String(otp)) {
+      return errorResponse(res, 400, "Invalid OTP", null);
+    }
+
+    // Check if user exists
+    const user = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        password: users.password,
+        isDeleted: users.isDeleted,
+      })
+      .from(users)
+      .where(eq(users.email, email));
+
+    if (user.length === 0) {
+      return errorResponse(res, 404, "User not found", null);
+    }
+
+    if (user[0].isDeleted === 0) {
+      return errorResponse(res, 400, "User is deleted", null);
+    }
+
+    // Check if new password is different from current password
+    const isSamePassword = await compare(newPassword, user[0].password);
+    if (isSamePassword) {
+      return errorResponse(res, 400, "New password must be different from current password", null);
+    }
+
+    // Hash new password
+    const hashedPassword = await hash(newPassword, 10);
+
+    // Update password
+    await db
+      .update(users)
+      .set({
+        password: hashedPassword,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, user[0].id));
+
+    await redis.del(`forgotPasswordOtp:${email}`);
+
+    await redis.del(`refresh:${user[0].id}`);
+
+    return successResponse(res, 200, null, "Password reset successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+

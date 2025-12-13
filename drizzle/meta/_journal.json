@@ -71,6 +71,13 @@
       "when": 1765612649600,
       "tag": "0009_shallow_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1765644426035,
+      "tag": "0010_brave_sharon_carter",
+      "breakpoints": true
     }
   ]
 }

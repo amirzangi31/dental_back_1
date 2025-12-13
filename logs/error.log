@@ -1,0 +1,1 @@
+2025-12-13T19:39:36.775Z [ERROR]: Cannot set property query of #<IncomingMessage> which has only a getter - POST /api/auth/signin

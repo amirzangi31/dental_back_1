@@ -4,7 +4,7 @@ import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
 import { orders, OrderStatus, orderTeeth } from "../../../db/schema/orders";
 import { tooth } from "../../../db/schema/tooth";
-import { asc, count, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { calculateTeethTotalPrice } from "../../../utils/calculateTeethPrice";
 import { category } from "../../../db/schema/category";
 import { device } from "../../../db/schema/device";
@@ -17,7 +17,7 @@ import { files } from "../../../db/schema/files";
 import path from "path";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
-import { payment } from "../../../db/schema/payment";
+import { payment, PaymentStatus } from "../../../db/schema/payment";
 import { users } from "../../../db/schema/users";
 export const createOrder = async (req: Request, res: Response) => {
   try {
@@ -486,37 +486,71 @@ export const submitOrder = async (req: Request, res: Response) => {
   }
 };
 
+
 export const orderList = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
 
+    const { isDelivered, paymentStatus } = req.query as {
+      isDelivered?: string;
+      paymentStatus?: PaymentStatus;
+    };
+
+    /* ------------------ WHERE CONDITIONS ------------------ */
+    const whereConditions = [
+      eq(orders.user_id, user.userId),
+      eq(orders.isDeleted, 0),
+    ];
+
+    if (isDelivered !== undefined) {
+      whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
+    }
+
+    const paymentStatusCondition = paymentStatus
+      ? eq(payment.status, paymentStatus)
+      : undefined;
+
+    /* ------------------ TOTAL COUNT ------------------ */
     const [{ total }] = await db
       .select({ total: count() })
       .from(orders)
-      .where(eq(orders.user_id, user.userId));
+      .leftJoin(payment, eq(payment.order_id, orders.id))
+      .where(and(...whereConditions, paymentStatusCondition));
 
+    /* ------------------ ORDERS LIST ------------------ */
     const ordersList = await db
       .select({
         id: orders.id,
+        title: orders.title,
+        status: orders.status,
+        isDelivered: orders.isDelivered,
         paymentstatus: orders.paymentstatus,
+        totalaprice: orders.totalaprice,
         comment: orders.comment,
         file: orders.file,
         adminFile: orders.adminFile,
         discount: orders.discount,
         vip: orders.vip,
-        isDelivered: orders.isDelivered,
         deliveryDate: orders.deliveryDate,
         report: orders.report,
-        status: orders.status,
-        totalaprice: orders.totalaprice,
-        title: orders.title,
-        user_id: orders.user_id,
+        createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
+
+        payment: {
+          id: payment.id,
+          status: payment.status,
+          isAccepted: payment.isAccepted,
+          type: payment.type,
+          trackingCode: payment.trackingCode,
+        },
       })
       .from(orders)
-      .where(eq(orders.user_id, user.userId))
+      .leftJoin(payment, eq(payment.order_id, orders.id))
+      .where(and(...whereConditions, paymentStatusCondition))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -538,13 +572,19 @@ export const orderList = async (req: Request, res: Response) => {
       );
     }
 
+    /* ------------------ CATEGORIES ------------------ */
     const ordersWithCategories = await Promise.all(
       ordersList.map(async (order) => {
         const teethRelations = await db
           .select()
           .from(orderTeeth)
           .where(eq(orderTeeth.orderId, order.id));
+
         const teethIds = teethRelations.map((t) => t.toothId);
+
+        if (!teethIds.length) {
+          return { ...order, categories: [] };
+        }
 
         const teethCategories = await db
           .select({
@@ -554,17 +594,10 @@ export const orderList = async (req: Request, res: Response) => {
           .from(tooth)
           .leftJoin(category, eq(tooth.category, category.id))
           .where(inArray(tooth.id, teethIds));
-        const paymentItem = await db
-          .select({
-            id: payment.id,
-            status: payment.status,
-            isAccepted: payment.isAccepted,
-            type: payment.type,
-          })
-          .from(payment)
-          .where(eq(payment.order_id, order.id));
 
-        const uniqueCategories = teethCategories.reduce((acc: any[], c) => {
+        const uniqueCategories = teethCategories.reduce<
+          { categoryId: number | null; categoryName: string | null }[]
+        >((acc, c) => {
           if (!acc.find((x) => x.categoryId === c.categoryId)) {
             acc.push(c);
           }
@@ -574,11 +607,11 @@ export const orderList = async (req: Request, res: Response) => {
         return {
           ...order,
           categories: uniqueCategories,
-          payment: paymentItem[0] || null,
         };
       })
     );
 
+    /* ------------------ RESPONSE ------------------ */
     return successResponse(
       res,
       200,
@@ -596,7 +629,7 @@ export const orderList = async (req: Request, res: Response) => {
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
-};
+};;
 
 export const orderDropDown = async (req: Request, res: Response) => {
   try {
@@ -638,9 +671,11 @@ export const orderDropDown = async (req: Request, res: Response) => {
   }
 };
 
+
 export const orderListAdmin = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+
     if (user.role !== "admin") {
       return errorResponse(
         res,
@@ -649,36 +684,68 @@ export const orderListAdmin = async (req: Request, res: Response) => {
         null
       );
     }
+
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
 
-    const [{ total }] = await db.select({ total: count() }).from(orders);
+    const { isDelivered, paymentStatus } = req.query as {
+      isDelivered?: string;
+      paymentStatus?: PaymentStatus;
+    };
 
-    const order = await db
+    /* ------------------ WHERE CONDITIONS ------------------ */
+    const whereConditions = [eq(orders.isDeleted, 0)];
+
+    if (isDelivered !== undefined) {
+      whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
+    }
+
+    const paymentStatusCondition = paymentStatus
+      ? eq(payment.status, paymentStatus)
+      : undefined;
+
+    /* ------------------ TOTAL ------------------ */
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(orders)
+      .leftJoin(payment, eq(payment.order_id, orders.id))
+      .where(and(...whereConditions, paymentStatusCondition));
+
+    /* ------------------ ORDERS ------------------ */
+    const ordersList = await db
       .select()
       .from(orders)
+      .leftJoin(payment, eq(payment.order_id, orders.id))
+      .where(and(...whereConditions, paymentStatusCondition))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
+
+    /* ------------------ CATEGORIES + PAYMENT (OUTPUT SAME) ------------------ */
     const ordersWithCategories = await Promise.all(
-      order.map(async (order) => {
+      ordersList.map(async ({ orders: order }) => {
         const teethRelations = await db
           .select()
           .from(orderTeeth)
           .where(eq(orderTeeth.orderId, order.id));
+
         const teethIds = teethRelations.map((t) => t.toothId);
 
-        const teethCategories = await db
-          .select({
-            categoryId: tooth.category,
-            categoryName: category.title,
-          })
-          .from(tooth)
-          .leftJoin(category, eq(tooth.category, category.id))
-          .where(inArray(tooth.id, teethIds));
+        const teethCategories = teethIds.length
+          ? await db
+              .select({
+                categoryId: tooth.category,
+                categoryName: category.title,
+              })
+              .from(tooth)
+              .leftJoin(category, eq(tooth.category, category.id))
+              .where(inArray(tooth.id, teethIds))
+          : [];
 
-        const uniqueCategories = teethCategories.reduce((acc: any[], c) => {
+        const uniqueCategories = teethCategories.reduce<
+          { categoryId: number | null; categoryName: string | null }[]
+        >((acc, c) => {
           if (!acc.find((x) => x.categoryId === c.categoryId)) {
             acc.push(c);
           }
@@ -699,6 +766,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
           })
           .from(payment)
           .where(eq(payment.order_id, order.id));
+
         return {
           ...order,
           categories: uniqueCategories,
@@ -707,11 +775,14 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       })
     );
 
+    /* ------------------ RESPONSE ------------------ */
     return successResponse(
       res,
       200,
       {
-        items: ordersWithCategories.filter((item) => item.payment !== null),
+        items: ordersWithCategories.filter(
+          (item) => item.payment !== null
+        ),
         pagination: {
           page: Math.floor(offset / limit) + 1,
           limit,
@@ -725,7 +796,6 @@ export const orderListAdmin = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 export const changeOrderStatus = async (req: Request, res: Response) => {
   try {
     const { status, orderId, totalPrice } = req.body;
