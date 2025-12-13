@@ -4,7 +4,7 @@ export const generateAccessToken = (payload: any) => {
   const secretKey = process.env.SECRET_KEY || ""; 
 
   const optionsAccess = {
-    expiresIn: 60 * 60, 
+    expiresIn: parseInt(process.env.ACCESS_TOKEN_TIME as string), 
   };
   const accessToken = sign({
     userId : payload.userId,

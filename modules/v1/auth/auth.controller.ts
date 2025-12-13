@@ -187,7 +187,7 @@ export const signin = async (req: Request, res: Response) => {
     const isPasswordCorrect = await compare(password, user[0].password);
 
     if (!isPasswordCorrect) {
-      return errorResponse(res, 400, "Password is incorrect", null);
+      return errorResponse(res, 400, "Password Or Email is incorrect", null);
     }
 
     if (user.length > 0 && user[0].isDeleted === 0) {
@@ -223,14 +223,21 @@ export const signin = async (req: Request, res: Response) => {
 
 export const refreshToken = async (req: Request, res: Response) => {
   try {
-    const token = (req as any).token;
-    const { refreshToken } = req.body;
+    const { refresh } = req.body;
+    const authorization = req.headers["authorization"];
+    if (!authorization) {
+      return errorResponse(res, 401, "Please log in again", null);
+    }
+    const token = authorization.split(" ")[1];
+    if (!token) {
+      return errorResponse(res, 401, "Please log in again", null);
+    }
     let email;
     try {
-      const decoded: any = verify(token, process.env.SECRET_KEY as string);
+      const decoded: any = decode(token);
       email = decoded.email;
     } catch (err) {
-      return errorResponse(res, 401, "توکن نامعتبر است", null);
+      return errorResponse(res, 401, "token is invalid or expired", null);
     }
 
     const user = await db
@@ -247,7 +254,7 @@ export const refreshToken = async (req: Request, res: Response) => {
     }
     if (user.length > 0 && user[0].isDeleted === 1) {
       const refreshTokenRedis = await redis.get(`refresh:${user[0].id}`);
-
+      
       if (!refreshTokenRedis) {
         return errorResponse(
           res,
@@ -256,7 +263,7 @@ export const refreshToken = async (req: Request, res: Response) => {
           null
         );
       }
-      if (refreshTokenRedis !== refreshToken) {
+      if (refreshTokenRedis !== refresh) {
         return errorResponse(
           res,
           401,

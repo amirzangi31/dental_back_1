@@ -12,7 +12,7 @@ export const verifyemailSchema = yup.object().shape({
 });
 
 export const refreshTokenSchema = yup.object().shape({
-  refreshToken: yup.string().required("Refresh token is required"),
+  refresh: yup.string().required("Refresh token is required"),
 });
 export const signinSchema = yup.object().shape({
   email: yup.string().email("Invalid email address").required("Email is required"),

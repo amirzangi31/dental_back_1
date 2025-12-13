@@ -23,7 +23,7 @@ const router = express.Router();
 router.post("/sendemail", validate(sendemailSchema), sendemail);
 router.post("/signup", validate(signupSchema), signup);
 router.post("/verifyemail", validate(verifyemailSchema), verifyemail);
-router.post("/refreshtoken", auth, validate(refreshTokenSchema), refreshToken);
+router.post("/refreshtoken",   validate(refreshTokenSchema), refreshToken);
 router.post("/signin",  validate(signinSchema), signin);
 router.post("/logout", auth, logout);
 router.get("/user", auth, user); 
