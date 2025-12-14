@@ -78,6 +78,13 @@
       "when": 1765644426035,
       "tag": "0010_brave_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1765736939133,
+      "tag": "0011_heavy_hydra",
+      "breakpoints": true
     }
   ]
 }

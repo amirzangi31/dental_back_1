@@ -10,6 +10,8 @@ import {
   verifyemail,
   forgotPassword,
   resetPassword,
+  googleAuth,
+  googleSignIn,
 } from "./auth.controller";
 import { validate } from "../../../middleware/schemaValidate";
 import {
@@ -20,6 +22,8 @@ import {
   verifyemailSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
+  googleAuthSchema,
+  googleSignInSchema,
 } from "../../../db/validations/auth";
 import { auth } from "../../../middleware/auth";
 import { updateUserSchema } from "../../../db/validations/users";
@@ -36,5 +40,7 @@ router.get("/user", auth, user);
 router.put("/updateuser", auth, validate(updateUserSchema), updateUser);
 router.post("/forgotpassword", validate(forgotPasswordSchema), forgotPassword);
 router.post("/resetpassword", validate(resetPasswordSchema), resetPassword);
+router.post("/google/signin", validate(googleSignInSchema), googleSignIn);
+router.post("/google", validate(googleAuthSchema), googleAuth);
 export default router;
   

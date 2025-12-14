@@ -57,9 +57,31 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 /* =======================
    SECURITY MIDDLEWARES
 ======================= */
+// Custom headers (must be before sanitize to handle OPTIONS early)
+app.use(setHeaders);
+
 // Body parser with limit
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
+
+// Fix for Express 5: Make req.query writable for mongoSanitize
+app.use((req: Request, res: Response, next: NextFunction) => {
+  if (req.method === "OPTIONS") {
+    return next();
+  }
+  // Convert req.query to a writable object for Express 5 compatibility
+  try {
+    Object.defineProperty(req, 'query', {
+      value: { ...req.query },
+      writable: true,
+      configurable: true,
+      enumerable: true,
+    });
+  } catch (err) {
+    // If already writable, continue
+  }
+  next();
+});
 
 // Sanitize Mongo queries
 app.use(mongoSanitize());
@@ -77,11 +99,8 @@ app.use(
   })
 );
 
-// Custom headers
-app.use(setHeaders);
-
 // CORS
-const allowedOrigins = ["https://yourdomain.com"];
+const allowedOrigins = ["http://localhost:3000"];
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -119,7 +138,9 @@ if (process.env.NODE_ENV !== "production") {
 /* =======================
    STATIC FILES (SECURE)
 ======================= */
-app.use("/uploads", express.static(path.join(__dirname, "../uploads")));
+// Use process.cwd() for better compatibility with ts-node
+const uploadsPath = path.join(process.cwd(), "uploads");
+app.use("/uploads", express.static(uploadsPath));
 
 /* =======================
    ROUTES
@@ -161,3 +182,4 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
 });
 
 export default app;
+  

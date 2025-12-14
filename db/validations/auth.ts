@@ -19,17 +19,24 @@ export const signinSchema = yup.object().shape({
   password: yup.string().min(8, "Password must be at least 8 characters long").required("Password is required"),
 });
 export const signupSchema = yup.object().shape({
-  name: yup.string().required("Name is required"),
-  lastName: yup.string().required("Last name is required"),
+  name: yup.string(),
+  lastName: yup.string(),
   country: yup.string().required("Country is required"),
   postalCode: yup.string().required("Postal code is required"),
   email: yup.string().email("Invalid email address").required("Email is required"),
-  password: yup.string().min(8, "Password must be at least 8 characters long").required("Password is required"),
-  confirmPassword: yup
-    .string()
-    .min(8, "Confirm Password must be at least 8 characters long")
-    .oneOf([yup.ref("password")], "Confirm Password must match Password")
-    .required("Confirm Password is required"),
+  password: yup.string().when("$isGoogleSignup", {
+    is: true,
+    then: (schema) => schema.notRequired(),
+    otherwise: (schema) => schema.min(8, "Password must be at least 8 characters long").required("Password is required"),
+  }),
+  confirmPassword: yup.string().when("$isGoogleSignup", {
+    is: true,
+    then: (schema) => schema.notRequired(),
+    otherwise: (schema) => schema
+      .min(8, "Confirm Password must be at least 8 characters long")
+      .oneOf([yup.ref("password")], "Confirm Password must match Password")
+      .required("Confirm Password is required"),
+  }),
   sessionId: yup.string().required("Session Id is required"),
   role: yup.string().required("Role is required"),
   specaility: yup.string().when("role", {
@@ -57,4 +64,12 @@ export const resetPasswordSchema = yup.object().shape({
     .min(8, "Confirm Password must be at least 8 characters long")
     .oneOf([yup.ref("newPassword")], "Confirm Password must match New Password")
     .required("Confirm Password is required"),
+});
+
+export const googleSignInSchema = yup.object().shape({
+  idToken: yup.string().required("Google ID token is required"),
+});
+
+export const googleAuthSchema = yup.object().shape({
+  idToken: yup.string().required("Google ID token is required"),
 });
