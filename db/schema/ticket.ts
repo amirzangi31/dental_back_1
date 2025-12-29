@@ -15,13 +15,10 @@ export const statusEnum = ["open", "pending", "close"] as const;
 export type TicketStatus = (typeof statusEnum)[number];
 export const TicketStatusPgEnum = pgEnum("ticketStatus", statusEnum);
 
-export const tickets = pgTable("tickets", {
+export const tickets  = pgTable("tickets", {
   id: serial("id").primaryKey(),
 
-  orderId: integer("order_id")
-    .notNull()
-    .references(() => orders.id),
-
+  orderId: integer("order_id").references(() => orders.id),
   userId: integer("user_id")
     .notNull()
     .references(() => users.id),

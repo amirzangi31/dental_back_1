@@ -17,6 +17,7 @@ export const refreshTokenSchema = yup.object().shape({
 export const signinSchema = yup.object().shape({
   email: yup.string().email("Invalid email address").required("Email is required"),
   password: yup.string().min(8, "Password must be at least 8 characters long").required("Password is required"),
+  isRemember: yup.boolean().optional().default(false),
 });
 export const signupSchema = yup.object().shape({
   name: yup.string(),
@@ -72,4 +73,24 @@ export const googleSignInSchema = yup.object().shape({
 
 export const googleAuthSchema = yup.object().shape({
   idToken: yup.string().required("Google ID token is required"),
+});
+
+export const createDesignerSchema = yup.object().shape({
+    name: yup.string().required("Name is required"),
+    lastName: yup.string().required("Last name is required"),
+    email: yup.string().email("Invalid email address").required("Email is required"),
+    password: yup.string().min(8, "Password must be at least 8 characters long").required("Password is required"),
+    country: yup.string().required("Country is required"),
+    postalCode: yup.string().required("Postal code is required"),
+    phoneNumber: yup.string(),
+});
+
+export const updateDesignerSchema = yup.object().shape({
+  name: yup.string().required("Name is required"),
+  lastName: yup.string().required("Last name is required"),
+  email: yup.string().email("Invalid email address").required("Email is required"),
+  country: yup.string().required("Country is required"),
+  postalCode: yup.string().required("Postal code is required"),
+  phoneNumber: yup.string(),
+  password: yup.string().min(8, "Password must be at least 8 characters long").optional(),
 });

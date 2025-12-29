@@ -468,8 +468,6 @@ export const submitOrder = async (req: Request, res: Response) => {
       type: "uploadfile",
       status: "pending",
     });
-    console.log(vip);
-    console.log(typeof vip);
     await db
       .update(orders)
       .set({

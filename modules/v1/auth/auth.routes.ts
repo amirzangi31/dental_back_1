@@ -12,7 +12,12 @@ import {
   resetPassword,
   googleAuth,
   googleSignIn,
-} from "./auth.controller";
+  createDesigner,
+  updateDesigner,
+  deleteDesigner,
+  getDesigners,
+  getByIdDesigner,
+  } from "./auth.controller";
 import { validate } from "../../../middleware/schemaValidate";
 import {
   refreshTokenSchema,
@@ -24,8 +29,11 @@ import {
   resetPasswordSchema,
   googleAuthSchema,
   googleSignInSchema,
+  createDesignerSchema,
+  updateDesignerSchema,
 } from "../../../db/validations/auth";
 import { auth } from "../../../middleware/auth";
+import { isAdmin } from "../../../middleware/isAdmin";
 import { updateUserSchema } from "../../../db/validations/users";
 
 const router = express.Router();
@@ -42,5 +50,12 @@ router.post("/forgotpassword", validate(forgotPasswordSchema), forgotPassword);
 router.post("/resetpassword", validate(resetPasswordSchema), resetPassword);
 router.post("/google/signin", validate(googleSignInSchema), googleSignIn);
 router.post("/google", validate(googleAuthSchema), googleAuth);
+
+// Designer management routes (admin only)
+router.post("/designer", auth, isAdmin, validate(createDesignerSchema), createDesigner);
+router.put("/designer/:id", auth, isAdmin, validate(updateDesignerSchema), updateDesigner);
+router.delete("/designer/:id", auth, isAdmin, deleteDesigner);
+router.get("/designers", auth, isAdmin, getDesigners);
+router.get("/designer/:id", auth, isAdmin, getByIdDesigner);
 export default router;
   

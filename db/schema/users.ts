@@ -9,7 +9,7 @@ import {
   boolean
 } from "drizzle-orm/pg-core";
 
-export const userRoles = ["doctor", "admin", "labrator"] as const;
+export const userRoles = ["doctor", "admin", "labrator" , "designer"] as const;
 export type UserRole = (typeof userRoles)[number];
 export const roleEnum = pgEnum("role", userRoles);
 

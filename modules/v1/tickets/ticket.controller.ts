@@ -7,8 +7,6 @@ import { orders } from "../../../db/schema/orders";
 import { files } from "../../../db/schema/files";
 import { getPagination } from "../../../utils/pagination";
 
-
-
 export const getTickets = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -41,25 +39,26 @@ export const getTickets = async (req: Request, res: Response) => {
 
     // گرفتن آخرین پیام برای هر تیکت
     const ticketIds = ticketsList.map((t) => t.id);
-    
+
     // گرفتن همه پیام‌های مربوط به این تیکت‌ها و سپس فیلتر کردن آخرین پیام هر تیکت
-    const allMessages = ticketIds.length > 0
-      ? await db
-          .select({
-            ticketId: ticketMessages.ticketId,
-            message: ticketMessages.message,
-            createdAt: ticketMessages.createdAt,
-            senderType: ticketMessages.senderType,
-            senderId: ticketMessages.senderId,
-            file: ticketMessages.file,
-          })
-          .from(ticketMessages)
-          .where(inArray(ticketMessages.ticketId, ticketIds))
-          .orderBy(desc(ticketMessages.createdAt))
-      : [];
+    const allMessages =
+      ticketIds.length > 0
+        ? await db
+            .select({
+              ticketId: ticketMessages.ticketId,
+              message: ticketMessages.message,
+              createdAt: ticketMessages.createdAt,
+              senderType: ticketMessages.senderType,
+              senderId: ticketMessages.senderId,
+              file: ticketMessages.file,
+            })
+            .from(ticketMessages)
+            .where(inArray(ticketMessages.ticketId, ticketIds))
+            .orderBy(desc(ticketMessages.createdAt))
+        : [];
 
     // گروه‌بندی پیام‌ها بر اساس ticketId و گرفتن اولین (آخرین) پیام هر تیکت
-    const lastMessageMap = new Map<number, typeof allMessages[0]>();
+    const lastMessageMap = new Map<number, (typeof allMessages)[0]>();
     for (const msg of allMessages) {
       if (!lastMessageMap.has(msg.ticketId)) {
         lastMessageMap.set(msg.ticketId, msg);
@@ -107,9 +106,9 @@ export const getTickets = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-export const getTicketByOrderId = async (req: Request, res: Response) => {
+export const getTicketById = async (req: Request, res: Response) => {
   try {
-    const orderId = Number(req.params.orderId);
+    const id = Number(req.params.id);
 
     const ticketInfo = await db
       .select({
@@ -126,7 +125,7 @@ export const getTicketByOrderId = async (req: Request, res: Response) => {
         },
       })
       .from(tickets)
-      .where(eq(tickets.orderId, orderId))
+      .where(eq(tickets.id, id))
       .leftJoin(orders, eq(tickets.orderId, orders.id))
       .orderBy(desc(tickets.createdAt));
 
@@ -151,11 +150,12 @@ export const getTicketByOrderId = async (req: Request, res: Response) => {
       200,
       {
         ...ticketInfo[0],
-        messages : messages ,
+        messages: messages,
       },
       "Ticket fetched successfully"
     );
   } catch (error) {
+    console.log(error)
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
@@ -164,38 +164,47 @@ export const createTicket = async (req: Request, res: Response) => {
     const { orderId, subject, message } = req.body;
     const user = (req as any).user;
     const file = req.file;
+    if (orderId && orderId !== "0") {
+      const [order] = await db
+        .select()
+        .from(orders)
+        .where(eq(orders.id, +orderId));
 
-    const [order] = await db
-      .select()
-      .from(orders)
-      .where(eq(orders.id, +orderId));
+      if (!order) {
+        return errorResponse(res, 404, "This order is not found", null);
+      }
+      if (order.report) {
+        return errorResponse(res, 404, "This order has report", null);
+      }
+      if (order.user_id !== user.userId)
+        return errorResponse(
+          res,
+          403,
+          "You are not authorized to create ticket this order",
+          null
+        );
+    }
+    const parsedOrderId = Number(orderId); 
 
-    if (!order) {
-      return errorResponse(res, 404, "This order is not found", null);
+    if (isNaN(parsedOrderId)) {
+      throw new Error("Invalid orderId"); 
     }
-    if (order.report) {
-      return errorResponse(res, 404, "This order has report", null);
-    }
-    if (order.user_id !== user.userId)
-      return errorResponse(
-        res,
-        403,
-        "You are not authorized to create ticket this order",
-        null
-      );
+    
     const [newTicket] = await db
       .insert(tickets)
       .values({
-        orderId,
+        orderId: parsedOrderId !== 0 ? parsedOrderId : null,
         userId: user.userId,
         subject,
         ticketStatus: "open",
       })
       .returning();
-    await db
-      .update(orders)
-      .set({ report: newTicket.id })
-      .where(eq(orders.id, +orderId));
+    if (orderId && orderId !== "0") {  
+      await db
+        .update(orders)
+        .set({ report: newTicket.id })
+        .where(eq(orders.id, +orderId));
+    }
 
     if (file) {
       const fileRecord = await db
@@ -218,7 +227,7 @@ export const createTicket = async (req: Request, res: Response) => {
         senderType: user.role === "admin" ? "admin" : "user",
         message,
         file: file?.path,
-      })
+      })  
       .returning();
 
     return successResponse(
@@ -231,7 +240,7 @@ export const createTicket = async (req: Request, res: Response) => {
       "Ticket created successfully"
     );
   } catch (error) {
-    console.log(error);
+    console.log(error)
     return errorResponse(res, 500, "Internal server error", error);
   }
 };

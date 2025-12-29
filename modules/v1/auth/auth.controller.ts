@@ -1,5 +1,5 @@
 import crypto, { randomUUID } from "crypto";
-import { eq } from "drizzle-orm";
+import { and, asc, count, desc, eq } from "drizzle-orm";
 import { Request, Response } from "express";
 import nodemailer from "nodemailer";
 import redis from "../../../config/redis";
@@ -10,6 +10,7 @@ import { errorResponse, successResponse } from "../../../utils/responses";
 import { decode, verify } from "jsonwebtoken";
 import { compare, hash } from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
+import { getPagination } from "../../../utils/pagination";
 
 export const sendemail = async (req: Request, res: Response) => {
   try {
@@ -105,9 +106,14 @@ export const verifyemail = async (req: Request, res: Response) => {
     // If Google signup, include Google data in response
     if (isGoogleSignup) {
       const googleUserData = JSON.parse(googleUserDataStr);
-      await redis.set(`googleUserData:${sessionId}`, googleUserDataStr, "EX", 60 * 60 * 10);
+      await redis.set(
+        `googleUserData:${sessionId}`,
+        googleUserDataStr,
+        "EX",
+        60 * 60 * 10
+      );
       await redis.del(`googleUserData:${email}`);
-      
+
       return successResponse(
         res,
         200,
@@ -158,7 +164,7 @@ export const signup = async (req: Request, res: Response) => {
     const googleUserDataStr = await redis.get(`googleUserData:${sessionId}`);
     const isGoogleSignup = !!googleUserDataStr;
     let googleUserData = null;
-    
+
     if (isGoogleSignup) {
       googleUserData = JSON.parse(googleUserDataStr);
     }
@@ -174,29 +180,26 @@ export const signup = async (req: Request, res: Response) => {
 
     // Use Google data if available, otherwise use request body
     const userData = {
-        email,
-        password: hashedPassword,
-        role: req.body.role,
+      email,
+      password: hashedPassword,
+      role: req.body.role,
       name: isGoogleSignup ? googleUserData.name : req.body.name,
       lastName: isGoogleSignup ? googleUserData.lastName : req.body.lastName,
-        country: req.body.country,
-        postalCode: req.body.postalCode,
-        phoneNumber: req.body.phoneNumber,
-        specaility: req.body.specaility,
-        laboratoryName: req.body.laboratoryName,
+      country: req.body.country,
+      postalCode: req.body.postalCode,
+      phoneNumber: req.body.phoneNumber,
+      specaility: req.body.specaility,
+      laboratoryName: req.body.laboratoryName,
       ...(isGoogleSignup && { googleId: googleUserData.googleId }),
     };
 
-    const user = await db
-      .insert(users)
-      .values(userData)
-      .returning();
-    
+    const user = await db.insert(users).values(userData).returning();
+
     await redis.del(`sessionId:${email}`);
     if (isGoogleSignup) {
       await redis.del(`googleUserData:${sessionId}`);
     }
-    
+
     const refreshToken = randomUUID();
     await redis.set(
       `refresh:${user[0].id}`,
@@ -241,13 +244,17 @@ export const signin = async (req: Request, res: Response) => {
     if (!user || user.length === 0) {
       return errorResponse(res, 400, "Password Or Email is incorrect", null);
     }
-    console.log(user)
     if (user[0].isDeleted === 0) {
       return errorResponse(res, 400, "User is deleted", null);
     }
 
     if (!user[0].password) {
-      return errorResponse(res, 400, "Please use Google sign in for this account", null);
+      return errorResponse(
+        res,
+        400,
+        "Please use Google sign in for this account",
+        null
+      );
     }
 
     const isPasswordCorrect = await compare(password, user[0].password);
@@ -256,14 +263,15 @@ export const signin = async (req: Request, res: Response) => {
       return errorResponse(res, 400, "Password Or Email is incorrect", null);
     }
 
-    // Redis tokens
     await redis.del(`refresh:${user[0].id}`);
     const refreshToken = randomUUID();
     await redis.set(
       `refresh:${user[0].id}`,
       refreshToken,
       "EX",
-      parseInt(process.env.REFRESH_TOKEN_TIME as string)
+      req.body.isRemember
+        ? parseInt(process.env.REFRESH_TOKEN_TIME_LONG as string)
+        : parseInt(process.env.REFRESH_TOKEN_TIME as string)
     );
 
     const accessToken = generateAccessToken({
@@ -282,10 +290,10 @@ export const signin = async (req: Request, res: Response) => {
       "User signed in successfully"
     );
   } catch (error) {
+    console.log(error);
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 
 export const refreshToken = async (req: Request, res: Response) => {
   try {
@@ -405,7 +413,7 @@ export const user = async (req: Request, res: Response) => {
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
-    
+
     const {
       id,
       name,
@@ -416,8 +424,13 @@ export const updateUser = async (req: Request, res: Response) => {
       specaility,
       laboratoryName,
     } = req.body;
-    if(id !== user.userId.toString()) {
-      return errorResponse(res, 400, "You are not authorized to update this user", null);
+    if (id !== user.userId.toString()) {
+      return errorResponse(
+        res,
+        400,
+        "You are not authorized to update this user",
+        null
+      );
     }
     const updatedUser = await db
       .update(users)
@@ -452,7 +465,12 @@ export const forgotPassword = async (req: Request, res: Response) => {
       .where(eq(users.email, email));
 
     if (user.length === 0) {
-      return successResponse(res, 200, null, "If email exists, OTP has been sent");
+      return successResponse(
+        res,
+        200,
+        null,
+        "If email exists, OTP has been sent"
+      );
     }
 
     if (user[0].isDeleted === 0) {
@@ -460,7 +478,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -485,7 +503,12 @@ export const forgotPassword = async (req: Request, res: Response) => {
       console.log("Email sending is not enabled. Code for", email, ":", otp);
     }
 
-    return successResponse(res, 200, null, "If email exists, OTP has been sent");
+    return successResponse(
+      res,
+      200,
+      null,
+      "If email exists, OTP has been sent"
+    );
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
   }
@@ -523,12 +546,22 @@ export const resetPassword = async (req: Request, res: Response) => {
     }
 
     if (!user[0].password) {
-      return errorResponse(res, 400, "This account uses Google sign in. Password reset is not available", null);
+      return errorResponse(
+        res,
+        400,
+        "This account uses Google sign in. Password reset is not available",
+        null
+      );
     }
 
     const isSamePassword = await compare(newPassword, user[0].password);
     if (isSamePassword) {
-      return errorResponse(res, 400, "New password must be different from current password", null);
+      return errorResponse(
+        res,
+        400,
+        "New password must be different from current password",
+        null
+      );
     }
 
     const hashedPassword = await hash(newPassword, 10);
@@ -571,7 +604,10 @@ const verifyGoogleToken = async (idToken: string): Promise<any> => {
       return ticket.getPayload();
     } catch (error: any) {
       // If OAuth2Client fails (e.g., 403 error), try manual verification
-      console.warn("OAuth2Client verification failed, trying manual verification:", error.message);
+      console.warn(
+        "OAuth2Client verification failed, trying manual verification:",
+        error.message
+      );
     }
   }
 
@@ -579,12 +615,12 @@ const verifyGoogleToken = async (idToken: string): Promise<any> => {
   // Note: This is less secure but works when Google API is blocked
   try {
     const decoded = decode(idToken, { complete: true });
-    if (!decoded || typeof decoded === 'string') {
+    if (!decoded || typeof decoded === "string") {
       throw new Error("Invalid token format");
     }
 
     const payload = decoded.payload as any;
-    
+
     // Basic validation
     if (!payload.email || !payload.sub) {
       throw new Error("Missing required fields in token");
@@ -624,7 +660,12 @@ export const googleSignIn = async (req: Request, res: Response) => {
       payload = await verifyGoogleToken(idToken);
     } catch (error: any) {
       console.error("Google token verification error:", error);
-      return errorResponse(res, 401, `Invalid Google token: ${error.message}`, null);
+      return errorResponse(
+        res,
+        401,
+        `Invalid Google token: ${error.message}`,
+        null
+      );
     }
 
     if (!payload) {
@@ -634,7 +675,12 @@ export const googleSignIn = async (req: Request, res: Response) => {
     const { email, sub: googleId } = payload;
 
     if (!email) {
-      return errorResponse(res, 400, "Email is required from Google account", null);
+      return errorResponse(
+        res,
+        400,
+        "Email is required from Google account",
+        null
+      );
     }
 
     // Check if user exists by email or googleId
@@ -716,7 +762,12 @@ export const googleAuth = async (req: Request, res: Response) => {
     try {
       payload = await verifyGoogleToken(idToken);
     } catch (error: any) {
-      return errorResponse(res, 401, `Invalid Google token: ${error.message}`, null);
+      return errorResponse(
+        res,
+        401,
+        `Invalid Google token: ${error.message}`,
+        null
+      );
     }
 
     if (!payload) {
@@ -726,7 +777,12 @@ export const googleAuth = async (req: Request, res: Response) => {
     const { email, given_name, family_name, sub: googleId } = payload;
 
     if (!email || !given_name || !family_name) {
-      return errorResponse(res, 400, "Missing required information from Google account", null);
+      return errorResponse(
+        res,
+        400,
+        "Missing required information from Google account",
+        null
+      );
     }
 
     // Check if user exists by email
@@ -782,7 +838,7 @@ export const googleAuth = async (req: Request, res: Response) => {
     }
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    
+
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -809,7 +865,12 @@ export const googleAuth = async (req: Request, res: Response) => {
       lastName: family_name,
       googleId,
     };
-    await redis.set(`googleUserData:${email}`, JSON.stringify(googleUserData), "EX", 300);
+    await redis.set(
+      `googleUserData:${email}`,
+      JSON.stringify(googleUserData),
+      "EX",
+      300
+    );
 
     if (typeof transporter !== "undefined") {
       await transporter.sendMail(mailOptions);
@@ -833,5 +894,269 @@ export const googleAuth = async (req: Request, res: Response) => {
     );
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
+  }
+};
+
+export const createDesigner = async (req: Request, res: Response) => {
+  try {
+    const {
+      name,
+      lastName,
+      email,
+      password,
+      country,
+      postalCode,
+      phoneNumber,
+    } = req.body;
+
+    const existingUser = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, email));
+
+    if (existingUser.length > 0) {
+      return errorResponse(res, 400, "Email already exists", null);
+    }
+
+    const hashedPassword = await hash(password, 10);
+
+    const newDesigner = await db
+      .insert(users)
+      .values({
+        name,
+        lastName,
+        email,
+        password: hashedPassword,
+        country,
+        postalCode,
+        phoneNumber: phoneNumber || null,
+        role: "designer",
+      })
+      .returning({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        country: users.country,
+        postalCode: users.postalCode,
+        phoneNumber: users.phoneNumber,
+        createdAt: users.createdAt,
+      });
+
+    return successResponse(
+      res,
+      200,
+      newDesigner[0],
+      "Designer created successfully"
+    );
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const updateDesigner = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      name,
+      lastName,
+      email,
+      password,
+      country,
+      postalCode,
+      phoneNumber,
+    } = req.body;
+
+    // Check if designer exists and has role designer
+    const existingDesigner = await db
+      .select({ id: users.id, role: users.role, email: users.email })
+      .from(users)
+      .where(eq(users.id, Number(id)));
+
+    if (existingDesigner.length === 0) {
+      return errorResponse(res, 404, "Designer not found", null);
+    }
+
+    if (existingDesigner[0].role !== "designer") {
+      return errorResponse(res, 400, "User is not a designer", null);
+    }
+
+    // Check if email is being changed and already exists
+    if (email && email !== existingDesigner[0].email) {
+      const emailExists = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, email));
+
+      if (emailExists.length > 0) {
+        return errorResponse(res, 400, "Email already exists", null);
+      }
+    }
+
+    const updateData: any = {
+      name,
+      lastName,
+      email,
+      country,
+      postalCode,
+      phoneNumber: phoneNumber || null,
+      updatedAt: new Date(),
+    };
+
+    // Only update password if provided
+    if (password) {
+      updateData.password = await hash(password, 10);
+    }
+
+    const updatedDesigner = await db
+      .update(users)
+      .set(updateData)
+      .where(eq(users.id, Number(id)))
+      .returning({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        country: users.country,
+        postalCode: users.postalCode,
+        phoneNumber: users.phoneNumber,
+        updatedAt: users.updatedAt,
+      });
+
+    return successResponse(
+      res,
+      200,
+      updatedDesigner[0],
+      "Designer updated successfully"
+    );
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const deleteDesigner = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Check if designer exists and has role designer
+    const existingDesigner = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, Number(id)));
+
+    if (existingDesigner.length === 0) {
+      return errorResponse(res, 404, "Designer not found", null);
+    }
+
+    if (existingDesigner[0].role !== "designer") {
+      return errorResponse(res, 400, "User is not a designer", null);
+    }
+
+    // Soft delete by setting isDeleted to 0
+    await db
+      .update(users)
+      .set({
+        isDeleted: 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, Number(id)));
+
+    // Delete refresh token from redis
+    await redis.del(`refresh:${id}`);
+
+    return successResponse(res, 200, null, "Designer deleted successfully");
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const getDesigners = async (req: Request, res: Response) => {
+  try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(users.createdAt) : desc(users.createdAt);
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(users)
+      .where(eq(users.role, "designer"));
+    const designers = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        country: users.country,
+        postalCode: users.postalCode,
+        phoneNumber: users.phoneNumber,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .where(and(eq(users.role, "designer"), eq(users.isDeleted, 1)))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
+    return successResponse(
+      res,
+      200,
+      {
+        items: designers,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Designers fetched successfully"
+    );
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+export const getByIdDesigner = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return errorResponse(res, 400, "Designer ID is required", null);
+    }
+
+    const designer = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+        email: users.email,
+        role: users.role,
+        country: users.country,
+        postalCode: users.postalCode,
+        phoneNumber: users.phoneNumber,
+        createdAt: users.createdAt,
+        updatedAt: users.updatedAt,
+      })
+      .from(users)
+      .where(and(eq(users.id, Number(id)), eq(users.role, "designer")));
+
+    if (!designer || designer.length === 0) {
+      return errorResponse(res, 404, "Designer not found", null);
+    }
+
+    return successResponse(
+      res,
+      200,
+      designer[0],
+      "Designer fetched successfully"
+    );
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
   }
 };
