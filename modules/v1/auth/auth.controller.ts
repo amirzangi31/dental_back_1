@@ -44,7 +44,6 @@ export const sendemail = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const verifyemail = async (req: Request, res: Response) => {
   try {
     const { email, otp } = req.body;
@@ -146,7 +145,6 @@ export const verifyemail = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const signup = async (req: Request, res: Response) => {
   try {
     const { email, sessionId } = req.body;
@@ -225,7 +223,6 @@ export const signup = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const signin = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
@@ -294,7 +291,6 @@ export const signin = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const refreshToken = async (req: Request, res: Response) => {
   try {
     const { refresh } = req.body;
@@ -373,7 +369,6 @@ export const refreshToken = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const logout = async (req: Request, res: Response) => {
   try {
     const token = (req as any).token;
@@ -385,7 +380,6 @@ export const logout = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const user = async (req: Request, res: Response) => {
   try {
     const token = (req as any).token;
@@ -409,7 +403,6 @@ export const user = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const updateUser = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -449,7 +442,6 @@ export const updateUser = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const forgotPassword = async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
@@ -513,7 +505,6 @@ export const forgotPassword = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const resetPassword = async (req: Request, res: Response) => {
   try {
     const { email, otp, newPassword } = req.body;
@@ -583,12 +574,10 @@ export const resetPassword = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 let client: OAuth2Client | null = null;
 if (process.env.GOOGLE_CLIENT_ID) {
   client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 }
-
 const verifyGoogleToken = async (idToken: string): Promise<any> => {
   if (!process.env.GOOGLE_CLIENT_ID) {
     throw new Error("GOOGLE_CLIENT_ID is not configured");
@@ -641,7 +630,6 @@ const verifyGoogleToken = async (idToken: string): Promise<any> => {
     throw new Error(`Token verification failed: ${error.message}`);
   }
 };
-
 export const googleSignIn = async (req: Request, res: Response) => {
   try {
     const { idToken } = req.body;
@@ -744,7 +732,6 @@ export const googleSignIn = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const googleAuth = async (req: Request, res: Response) => {
   try {
     const { idToken } = req.body;
@@ -896,7 +883,6 @@ export const googleAuth = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
-
 export const createDesigner = async (req: Request, res: Response) => {
   try {
     const {
@@ -955,7 +941,6 @@ export const createDesigner = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 export const updateDesigner = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1037,7 +1022,6 @@ export const updateDesigner = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 export const deleteDesigner = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
@@ -1074,7 +1058,6 @@ export const deleteDesigner = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 export const getDesigners = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);

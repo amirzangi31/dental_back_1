@@ -25,6 +25,8 @@ import orderRoutes from "./modules/v1/order/order.routes";
 import vipRoutes from "./modules/v1/vip/vip.routes";
 import ticketRoutes from "./modules/v1/tickets/ticket.routes";
 import paymentRoutes from "./modules/v1/payment/payment.routes";
+import materialRoutes from "./modules/v1/material/material.route";
+import materialCategoryRoutes from "./modules/v1/materialcategory/materialcategory.route";
 
 // Middleware
 import { setHeaders } from "./middleware/headers";
@@ -155,6 +157,9 @@ app.use("/api/categorycolor", categorycolorRoutes);
 app.use("/api/additionalscan", additionalscanRoutes);
 app.use("/api/device", deviceRoutes);
 app.use("/api/volume", volumeRoutes);
+app.use("/api/material", materialRoutes);
+app.use("/api/materialcategory", materialCategoryRoutes);
+app.use("/api/materialshade", materialShadeRoutes);
 app.use("/api/ticket", ticketRoutes);
 app.use("/api/implant", implantRoutes);
 app.use("/api/materialshade", materialShadeRoutes);
