@@ -23,6 +23,7 @@ import categorycolorRoutes from "./modules/v1/categorycolor/categorycolor.routes
 import implantRoutes from "./modules/v1/implant/implant.routes";
 import orderRoutes from "./modules/v1/order/order.routes";
 import vipRoutes from "./modules/v1/vip/vip.routes";
+import taxRoutes from "./modules/v1/tax/tax.routes";
 import ticketRoutes from "./modules/v1/tickets/ticket.routes";
 import paymentRoutes from "./modules/v1/payment/payment.routes";
 import materialRoutes from "./modules/v1/material/material.route";
@@ -166,6 +167,7 @@ app.use("/api/materialshade", materialShadeRoutes);
 app.use("/api/implantattribute", implantAttributeRoutes);
 app.use("/api/order", orderRoutes);
 app.use("/api/vip", vipRoutes);
+app.use("/api/tax", taxRoutes);
 app.use("/api/payment", paymentRoutes);
 
 /* =======================

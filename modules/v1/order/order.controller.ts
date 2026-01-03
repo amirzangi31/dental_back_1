@@ -18,7 +18,6 @@ import path from "path";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
 import { payment, PaymentStatus } from "../../../db/schema/payment";
-import { users } from "../../../db/schema/users";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -484,7 +483,6 @@ export const submitOrder = async (req: Request, res: Response) => {
   }
 };
 
-
 export const orderList = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -627,7 +625,7 @@ export const orderList = async (req: Request, res: Response) => {
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
-};;
+};
 
 export const orderDropDown = async (req: Request, res: Response) => {
   try {
@@ -668,7 +666,6 @@ export const orderDropDown = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 
 export const orderListAdmin = async (req: Request, res: Response) => {
   try {
@@ -778,9 +775,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       res,
       200,
       {
-        items: ordersWithCategories.filter(
-          (item) => item.payment !== null
-        ),
+        items: ordersWithCategories.filter((item) => item.payment !== null),
         pagination: {
           page: Math.floor(offset / limit) + 1,
           limit,
@@ -794,6 +789,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
+
 export const changeOrderStatus = async (req: Request, res: Response) => {
   try {
     const { status, orderId, totalPrice } = req.body;
@@ -830,7 +826,7 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
     if (vipPrice.length === 0) {
       return errorResponse(res, 404, "VIP price not found", null);
     }
-   
+
     await db
       .update(orders)
       .set({
@@ -842,7 +838,7 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
     return successResponse(
       res,
       200,
-      { 
+      {
         order: orderId,
       },
       "Order status changed successfully"
@@ -902,6 +898,34 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error("Error in downloadAdminFile:", error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const calculateFormPrice = async (req: Request, res: Response) => {
+  try { 
+    const { teeth, } = req.body;
+
+    const teethValues = teeth.map((toothData: any) => ({
+      toothnumber: +toothData.toothnumber || null,
+      category: +toothData.category || null,
+      device: +toothData.device || null,
+      materialshade: +toothData.materialshade || null,
+      materials : [],
+      volume: toothData.volume || [],
+    }));
+
+    const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
+      category,
+      device,
+      materialshade,
+      implant,
+      additionalscan,
+      volume,
+    });
+
+    return successResponse(res, 200, { totalPrice }, "Price calculated successfully");
+  } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };

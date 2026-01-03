@@ -2,9 +2,11 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { material } from "../../../db/schema/material";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { files } from "../../../db/schema/files";
 import { getPagination } from "../../../utils/pagination";
+import { color } from "../../../db/schema/color";
+import { materialcategory } from "../../../db/schema/materialcategory";
 
 // Create Material
 export const createMaterial = async (req: Request, res: Response) => {
@@ -40,18 +42,21 @@ export const createMaterial = async (req: Request, res: Response) => {
       title,
       description,
       price: price ? String(price) : null,
-      color: color ? parseInt(color) : null,
+      color: color && color !== "null" && color !== "" && color !== "0"
+        ? parseInt(color)
+        : null,
       descriptionStatus: descriptionStatus ? descriptionStatus : "none",
-      materialcategory: materialcategory ? parseInt(materialcategory) : null,
+      materialcategory: materialcategory && materialcategory !== "null" && materialcategory !== "" && materialcategory !== "0"
+        ? parseInt(materialcategory)
+        : null,
       file: file.path,
-      category: category ? parseInt(category) : null,
+      category: category && category !== "null" && category !== "" && category !== "0"
+        ? parseInt(category)
+        : null,
+      parent_id: parent_id && parent_id !== "null" && parent_id !== "" && parent_id !== "0"
+        ? parseInt(parent_id)
+        : null,
     };
-
-    if (parent_id !== "0") {
-      values.parent_id = parseInt(parent_id);
-    } else {
-      values.parent_id = null;
-    }
     const materialItem = await db.insert(material).values(values).returning();
 
     return successResponse(
@@ -136,6 +141,102 @@ export const getMaterialDropDown = async (req: Request, res: Response) => {
   }
 };
 
+
+export const getMaterialByCategory = async (req: Request, res: Response) => {
+  try {
+    const { category, sort } = req.params;
+    const orderByClause =
+      sort === "asc" ? asc(material.createdAt) : desc(material.createdAt);
+    const categoryNumber = parseInt(category);
+    
+    if (isNaN(categoryNumber)) {
+      return errorResponse(res, 400, "Invalid category ID", null);
+    }
+    
+    const rows = await db
+      .select({
+        id: material.id,
+        title: material.title,
+        price: material.price,
+        file: material.file,
+        parent_id: material.parent_id,
+        color: color.code,  
+        category: material.category,
+        description: material.description,
+        descriptionStatus: material.descriptionStatus,
+        materialcategoryId: material.materialcategory,
+        materialcategoryTitle: materialcategory.title,
+      })
+      .from(material)
+      .leftJoin(color, eq(material.color, color.id))
+      .leftJoin(materialcategory, eq(material.materialcategory, materialcategory.id))
+      .where(and(eq(material.category, categoryNumber), eq(material.isDeleted, 0)))
+      .orderBy(orderByClause);
+    
+    // Create a map to store materials with their children
+    const materialMap = new Map<number, any>();
+    const materialCategoryMap = new Map<number | null, { materialcategory: { id: number | null; title: string | null } | null; materials: any[] }>();
+    
+    // First pass: create material objects with children array and group by materialcategory
+    for (const row of rows) {
+      const materialCategoryId = row.materialcategoryId || null;
+      const materialCategoryTitle = row.materialcategoryTitle || null;
+      
+      // Remove materialcategory fields from material object
+      const { materialcategoryId: _, materialcategoryTitle: __, ...materialData } = row;
+      
+      // Create material object with children array
+      const materialObj = {
+        ...materialData,
+        children: [],
+      };
+      
+      materialMap.set(row.id, materialObj);
+      
+      // Group by materialcategory
+      if (!materialCategoryMap.has(materialCategoryId)) {
+        materialCategoryMap.set(materialCategoryId, {
+          materialcategory: materialCategoryId ? { id: materialCategoryId, title: materialCategoryTitle } : null,
+          materials: [],
+        });
+      }
+    }
+    
+    // Second pass: build tree structure and add to materialcategory groups
+    for (const row of rows) {
+      const materialObj = materialMap.get(row.id)!;
+      const materialCategoryId = row.materialcategoryId || null;
+      
+      if (row.parent_id === null) {
+        // Root material - add to materialcategory group
+        materialCategoryMap.get(materialCategoryId)!.materials.push(materialObj);
+      } else {
+        // Child material - add to parent's children
+        const parent = materialMap.get(row.parent_id);
+        if (parent) {
+          parent.children.push(materialObj);
+        } else {
+          // If parent not found in current category, add as root
+          materialCategoryMap.get(materialCategoryId)!.materials.push(materialObj);
+        }
+      }
+    }
+    
+    // Convert map to array format
+    const groupedMaterials = Array.from(materialCategoryMap.values());
+  
+    return successResponse(
+      res,
+      200,
+      groupedMaterials,
+      "Materials fetched successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+
 // Get Material by ID
 export const getMaterialById = async (req: Request, res: Response) => {
   try {
@@ -192,22 +293,23 @@ export const updateMaterial = async (req: Request, res: Response) => {
       title: req.body.title,
       description: req.body.description,
       price: req.body.price ? String(req.body.price) : null,
-      color: req.body.color ? parseInt(req.body.color) : null,
+      color: req.body.color && req.body.color !== "null" && req.body.color !== "" && req.body.color !== "0"
+        ? parseInt(req.body.color)
+        : null,
       descriptionStatus: req.body.descriptionStatus
         ? req.body.descriptionStatus
         : "none",
-      materialcategory: req.body.materialcategory
+      materialcategory: req.body.materialcategory && req.body.materialcategory !== "null" && req.body.materialcategory !== "" && req.body.materialcategory !== "0"
         ? parseInt(req.body.materialcategory)
         : null,
       file: file.path,
-      category: req.body.category ? parseInt(req.body.category) : null,
+      category: req.body.category && req.body.category !== "null" && req.body.category !== "" && req.body.category !== "0"
+        ? parseInt(req.body.category)
+        : null,
+      parent_id: req.body.parent_id && req.body.parent_id !== "null" && req.body.parent_id !== "" && req.body.parent_id !== "0"
+        ? parseInt(req.body.parent_id)
+        : null,
     };
-
-    if (req.body.parent_id !== "0") {
-      values.parent_id = parseInt(req.body.parent_id);
-    } else {
-      values.parent_id = null;
-    }
 
     const materialItem = await db
       .update(material)
@@ -226,6 +328,7 @@ export const updateMaterial = async (req: Request, res: Response) => {
       "Material updated successfully"
     );
   } catch (error: any) {
+    console.log(error)
     return errorResponse(res, 500, "Internal server error", error);
   }
 };

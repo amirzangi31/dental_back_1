@@ -1,13 +1,11 @@
+import { asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { Request, Response } from "express";
 import { db } from "../../../db";
-import { implant } from "../../../db/schema/implant";
-import { files } from "../../../db/schema/files";
-import { errorResponse, successResponse } from "../../../utils/responses";
-import { asc, count, desc, eq, isNull, or } from "drizzle-orm";
-import path from "path";
-import { catalog } from "../../../db/schema/catalog";
 import { color } from "../../../db/schema/color";
+import { files } from "../../../db/schema/files";
+import { implant } from "../../../db/schema/implant";
 import { getPagination } from "../../../utils/pagination";
+import { errorResponse, successResponse } from "../../../utils/responses";
 
 export const getImplant = async (req: Request, res: Response) => {
   try {

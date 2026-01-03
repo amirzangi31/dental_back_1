@@ -5,6 +5,7 @@ import {
   updateMaterial,
   deleteMaterial,
   getMaterialDropDown,
+  getMaterialByCategory,
 } from "./material.controller";
 import { createMaterialSchema, updateMaterialSchema } from "../../../db/validations/material";
 import { validate } from "../../../middleware/schemaValidate";
@@ -14,6 +15,7 @@ const router = express.Router();
 
 
 router.get("/materials", getMaterials);
+router.get("/materials/:category", getMaterialByCategory);
 router.post("/", uploadSingle("file"), validate(createMaterialSchema), createMaterial);
 router.get("/dropdown", getMaterialDropDown);
 router.get("/:id", getMaterialById);

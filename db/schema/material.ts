@@ -31,7 +31,7 @@ export const material: any = pgTable("material", {
   ),
   category: integer("category").references(() => category.id),
   parent_id: integer("parent_id")
-    .references(() => materialcategory.id)
+    .references(() => material.id)
     .default(null as any),
   isDeleted: integer("isDeleted").notNull().default(0),
   createdAt: timestamp("createdAt").notNull().defaultNow(),
