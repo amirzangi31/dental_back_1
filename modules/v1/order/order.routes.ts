@@ -10,14 +10,17 @@ import {
   submitOrder,
   updateOrder,
   downloadAdminFile,
+  calculateOrderPrice,
 } from "./order.controller";
 import { uploadSingle } from "../../../middleware/upload";
 import { uploadAdminOrderFile } from "../../../middleware/adminOrderUpload";
+import { processOrderFormData } from "../../../middleware/orderFormDataUpload";
 import { isAdmin } from "../../../middleware/isAdmin";
 
 const router = express.Router();
 
-router.post("/order", auth, createOrder);
+router.post("/order", auth, processOrderFormData, createOrder);
+router.post("/calculateOrderPrice",   calculateOrderPrice);
 router.get("/order/:id", auth, getOrderWithId);
 router.put("/order/:id", auth, updateOrder);
 router.put("/submitorderwithuser/:id", auth, uploadSingle("file"), submitOrder);

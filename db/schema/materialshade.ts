@@ -19,7 +19,6 @@ export const materialShadeCategoryPgEnum = pgEnum(
 export const materialshade = pgTable("materialshade", {
   id: serial("id").primaryKey(),
   title: varchar("title", { length: 255 }),
-  price: decimal("price", { precision: 10, scale: 2 }),
   category: materialShadeCategoryPgEnum("category").$type<MaterialShadeCategory>(),
   color: integer("color").references(() => color.id),
   isDeleted: integer("isDeleted").notNull().default(0),

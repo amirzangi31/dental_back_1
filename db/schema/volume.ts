@@ -14,7 +14,7 @@ export const volume = pgTable("volume", {
   defaultvalue : decimal("defaultvalue", { precision: 10, scale: 2 }),
   start: decimal("start", { precision: 10, scale: 2 }),
   end: decimal("end", { precision: 10, scale: 2 }),
-  price: decimal("price", { precision: 10, scale: 2 }),
+  unit : varchar("unit" , {length : 100}),
   category: integer("category").references(() => category.id),
   isDeleted: integer("isDeleted").notNull().default(0),
   createdAt: timestamp("createdAt").notNull().defaultNow(),

@@ -16,7 +16,6 @@ export const getDevice = async (req: Request, res: Response) => {
       .select({
         id: device.id,
         title: device.title,
-        price: device.price,
         file: device.file,
       })
       .from(device)
@@ -67,7 +66,6 @@ export const createDevice = async (req: Request, res: Response) => {
       .insert(device)
       .values({
         title,
-        price: price,
         file: file.path,
       })
       .returning();
@@ -136,28 +134,3 @@ export const deleteDevice = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
-// routeهای زیر برای device در device.routes.ts تعریف شده‌اند:
-//
-// router.get("/devices", auth, getDevice);
-// router.post(
-//   "/device",
-//   auth,
-//   uploadSingle("file"),
-//   validate(createDeviceSchema),
-//   createDevice
-// );
-// router.put(
-//   "/device/:id",
-//   auth,
-//   uploadSingle("file"),
-//   validate(updateDeviceSchema),
-//   updateDevice
-// );
-// router.delete("/device/:id", auth, deleteDevice);
-//
-// توضیح routeها:
-// - GET    /devices       : دریافت لیست deviceها
-// - POST   /device        : ایجاد device جدید (با آپلود فایل)
-// - PUT    /device/:id    : ویرایش device بر اساس id (با آپلود فایل)
-// - DELETE /device/:id    : حذف device بر اساس id

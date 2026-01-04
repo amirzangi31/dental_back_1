@@ -18,7 +18,8 @@ export const getVolume = async (req: Request, res: Response) => {
         defaultvalue: volume.defaultvalue,
         start: volume.start,
         end: volume.end,
-        price: volume.price,
+        unit: volume.unit,
+
         category: volume.category,
       })
       .from(volume)
@@ -57,8 +58,8 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
         defaultvalue: volume.defaultvalue,
         start: volume.start,
         end: volume.end,
-        price: volume.price,
         category: volume.category,
+        unit: volume.unit,
       })
       .from(volume)
       .where(or(eq(volume.category, categoryNumber), isNull(volume.category)))
@@ -71,7 +72,7 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
 
 export const createVolume = async (req: Request, res: Response) => {
   try {
-    const { title, defaultvalue, start, end, price, category } = req.body;
+    const { title, defaultvalue, start, end, unit, category } = req.body;
 
     const volumeItem = await db
       .insert(volume)
@@ -80,8 +81,8 @@ export const createVolume = async (req: Request, res: Response) => {
         defaultvalue: defaultvalue ? String(defaultvalue) : null,
         start: start ? String(start) : null,
         end: end ? String(end) : null,
-        price: price ? String(price) : null,
         category: category ? parseInt(category) : null,
+        unit: unit,
       })
       .returning();
 
@@ -98,12 +99,12 @@ export const createVolume = async (req: Request, res: Response) => {
 
 export const updateVolume = async (req: Request, res: Response) => {
   try {
-    const { title, defaultvalue, start, end, price, category } = req.body;
+    const { title, defaultvalue, start, end, unit, category } = req.body;
     const updateData: any = {};
     if (title) updateData.title = title;
     if (start) updateData.start = String(start);
     if (end) updateData.end = String(end);
-    if (price) updateData.price = String(price);
+    if (unit) updateData.unit = unit;
     if (defaultvalue) updateData.defaultvalue = String(defaultvalue);
     if (category) updateData.category = parseInt(category);
     const volumeItem = await db

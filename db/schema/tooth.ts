@@ -8,8 +8,6 @@ import {
 import { category } from "./category";
 import { device } from "./device";
 import { materialshade } from "./materialshade";
-import { implant } from "./implant";
-import { additionalscan } from "./additionalscan";
 
 export const tooth = pgTable("tooth", {
   id: serial("id").primaryKey(),
@@ -17,9 +15,11 @@ export const tooth = pgTable("tooth", {
   category: integer("category").references(() => category.id),
   device: integer("device").references(() => device.id),
   materialshade: integer("materialshade").references(() => materialshade.id),
-  implant: integer("implant").references(() => implant.id),
-
-  additionalscan: integer("additionalscan").references(() => additionalscan.id),
+  materials: jsonb("materials")
+    .$type<
+      { material: number; file: number; text: string }[]
+    >()
+    .default([]),
 
   volume: jsonb("volume")
     .notNull()

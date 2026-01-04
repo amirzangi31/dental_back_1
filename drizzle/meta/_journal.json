@@ -120,6 +120,69 @@
       "when": 1767438883845,
       "tag": "0016_abnormal_skrulls",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1767439672578,
+      "tag": "0017_lonely_vampiro",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1767439824873,
+      "tag": "0018_high_dracula",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1767440713252,
+      "tag": "0019_harsh_major_mapleleaf",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1767441580262,
+      "tag": "0020_furry_solo",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1767441767310,
+      "tag": "0021_careful_thanos",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1767441969049,
+      "tag": "0022_hard_arclight",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1767462341188,
+      "tag": "0023_dark_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1767464038748,
+      "tag": "0024_daily_colleen_wing",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1767464719776,
+      "tag": "0025_calm_ravenous",
+      "breakpoints": true
     }
   ]
 }

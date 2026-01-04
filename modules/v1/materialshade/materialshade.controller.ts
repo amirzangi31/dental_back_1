@@ -16,7 +16,6 @@ export const getMaterialShade = async (req: Request, res: Response) => {
       .select({
         id: materialshade.id,
         title: materialshade.title,
-        price: materialshade.price,
         category: materialshade.category,
         color: {
           id: color.id,
@@ -45,20 +44,18 @@ export const getMaterialShade = async (req: Request, res: Response) => {
       "MaterialShade fetched successfully"
     );
   } catch (error) {
-    console.log(error)
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
 
 export const createMaterialShade = async (req: Request, res: Response) => {
   try {
-    const { title, price, category, color } = req.body;
+    const { title,  category, color } = req.body;
 
     const materialShadeItem = await db
       .insert(materialshade)
       .values({
         title,
-        price: price ? String(price) : null,
         category: category || null,
         color: color ? parseInt(color) : null,
       })

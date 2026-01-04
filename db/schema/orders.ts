@@ -33,6 +33,7 @@ export const orders = pgTable("orders", {
   user_id: integer("user_id")
     .notNull()
     .references(() => users.id),
+  designer_id: integer("designer_id").references(() => users.id),
   patientname: varchar("patientname", { length: 255 }),
   patientage: integer("patientage"),
   patientgender: patientGenderPgEnum("patientgender").$type<PatientGender>(),
@@ -41,14 +42,15 @@ export const orders = pgTable("orders", {
   totalaprice: decimal("totalaprice", { precision: 10, scale: 2 }).default(
     "0.00"
   ),
+  userfiles: text("userfiles"),
   paymentstatus: boolean("paymentstatus").default(false),
   antagonists: integer("antagonists").array(),
   comment: text("comment"),
   file: text("file"),
   adminFile: text("adminFile"),
   discount: integer("discount"),
+  tax: decimal("totalaprice", { precision: 10, scale: 2 }),
   vip: boolean("vip").default(false),
-  isDelivered: boolean("isDelivered").default(false),
   deliveryDate: timestamp("deliveryDate"),
   connections: integer("connections").array(),
   isDeleted: integer("isDeleted").notNull().default(0),

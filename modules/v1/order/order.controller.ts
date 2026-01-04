@@ -1,5 +1,4 @@
 import { Request, Response } from "express";
-import { verify } from "jsonwebtoken";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
 import { orders, OrderStatus, orderTeeth } from "../../../db/schema/orders";
@@ -9,8 +8,6 @@ import { calculateTeethTotalPrice } from "../../../utils/calculateTeethPrice";
 import { category } from "../../../db/schema/category";
 import { device } from "../../../db/schema/device";
 import { materialshade } from "../../../db/schema/materialshade";
-import { implant } from "../../../db/schema/implant";
-import { additionalscan } from "../../../db/schema/additionalscan";
 import { volume } from "../../../db/schema/volume";
 import { color } from "../../../db/schema/color";
 import { files } from "../../../db/schema/files";
@@ -18,15 +15,17 @@ import path from "path";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
 import { payment, PaymentStatus } from "../../../db/schema/payment";
+import { tax } from "../../../db/schema/tax";
+import { material } from "../../../db/schema/material";
 export const createOrder = async (req: Request, res: Response) => {
   try {
+    console.log(req.body);
     const {
       title,
       patientname,
       patientage,
       patientgender,
       report,
-      status,
       paymentstatus,
       comment,
       file,
@@ -36,127 +35,124 @@ export const createOrder = async (req: Request, res: Response) => {
       connections,
       antagonists,
     } = req.body;
+    const [taxItem] = await db.select().from(tax);
+    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
-    const user = (req as any).user;
+    const [vipItem] = await db.select().from(vip);
+    const vipPrice = vipParametr && vipItem ? Number(vipItem.price || 0) : 0;
 
-    if (!teeth || !Array.isArray(teeth) || teeth.length === 0) {
-      return errorResponse(
-        res,
-        400,
-        "At least one tooth must be selected",
-        null
-      );
+    const teethDetails: any[] = [];
+    let hasMissingPrice = false;
+    let subtotal = 0;
+
+    for (const toothData of teeth) {
+      const toothDetail: any = {
+        toothnumber: toothData.toothnumber || null,
+        category: null,
+        categoryPrice: 0,
+        materials: [],
+        materialsTotal: 0,
+        toothTotal: 0,
+        hasMissingPrice: false,
+      };
+
+      // Get category price
+      if (toothData.category) {
+        const [categoryItem] = await db
+          .select({
+            id: category.id,
+            title: category.title,
+            color: color.code,
+            price: category.price,
+          })
+          .from(category)
+          .leftJoin(color, eq(category.color, color.id))
+          .where(eq(category.id, toothData.category));
+
+        if (categoryItem) {
+          toothDetail.category = {
+            id: categoryItem.id,
+            title: categoryItem.title,
+            color: categoryItem.color,
+            price: categoryItem.price ? Number(categoryItem.price) : null,
+          };
+
+          if (categoryItem.price !== "0.00") {
+            toothDetail.categoryPrice = Number(categoryItem.price);
+          } else {
+            toothDetail.hasMissingPrice = true;
+            hasMissingPrice = true;
+          }
+        } else {
+          toothDetail.hasMissingPrice = true;
+          hasMissingPrice = true;
+        }
+      } else {
+        toothDetail.hasMissingPrice = true;
+        hasMissingPrice = true;
+      }
+
+      if (toothData.materials && Array.isArray(toothData.materials)) {
+        for (const mat of toothData.materials) {
+          if (mat.material) {
+            const [materialItem] = await db
+              .select()
+              .from(material)
+              .where(eq(material.id, mat.material));
+
+            if (materialItem) {
+              const materialPrice =
+                materialItem.price !== "0.00"
+                  ? Number(materialItem.price)
+                  : null;
+              toothDetail.materials.push({
+                id: materialItem.id,
+                title: materialItem.title,
+                price: materialPrice,
+              });
+
+              if (materialPrice !== null) {
+                toothDetail.materialsTotal += materialPrice;
+              } else {
+                toothDetail.hasMissingPrice = true;
+                hasMissingPrice = true;
+              }
+            } else {
+              toothDetail.hasMissingPrice = true;
+              hasMissingPrice = true;
+            }
+          }
+        }
+      }
+
+      if (!toothDetail.hasMissingPrice) {
+        toothDetail.toothTotal =
+          toothDetail.categoryPrice + toothDetail.materialsTotal;
+        subtotal += toothDetail.toothTotal;
+      } else {
+        toothDetail.toothTotal = 0;
+      }
+
+      teethDetails.push(toothDetail);
     }
 
-    const teethValues = teeth.map((toothData: any) => ({
-      toothnumber: +toothData.toothnumber || null,
-      category: +toothData.category || null,
-      device: +toothData.device || null,
-      materialshade: +toothData.materialshade || null,
-      implant: +toothData.implant || null,
-      additionalscan: +toothData.additionalscan || null,
-      volume: toothData.volume || [],
-    }));
+    const finalSubtotal = hasMissingPrice ? 0 : subtotal;
+    const vipAmount = hasMissingPrice ? 0 : vipPrice;
+    const totalBeforeTax = finalSubtotal + vipAmount;
+    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
+    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
 
-    const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
-      category,
-      device,
-      materialshade,
-      implant,
-      additionalscan,
-      volume,
-    });
-
-    const createdTeeth = await db.insert(tooth).values(teethValues).returning();
-
-    const [newOrder] = await db
-      .insert(orders)
-      .values({
-        title,
-        user_id: +user.userId,
-        patientname,
-        patientage: patientage ? parseInt(patientage) : null,
-        patientgender: patientgender || null,
-        report: report ? parseInt(report) : null,
-        status: "check",
-        totalaprice: String(totalPrice),
-        paymentstatus: paymentstatus || false,
-        comment,
-        file,
-        discount: discount ? parseInt(discount) : null,
-        vip: vipParametr === "true" || false,
-        connections: connections || [],
-        antagonists: antagonists || [],
-      })
-      .returning();
-
-    const orderTeethData = createdTeeth.map((t) => ({
-      orderId: newOrder.id,
-      toothId: t.id,
-    }));
-
-    await db.insert(orderTeeth).values(orderTeethData);
-
-    const teethIds = createdTeeth.map((t) => t.id);
-
-    const detailedTeeth = await db
-      .select({
-        id: tooth.id,
-        toothnumber: tooth.toothnumber,
-        category: tooth.category,
-        categoryName: category.title,
-        categoryPrice: category.price,
-        device: tooth.device,
-        devicePrice: device.price,
-        materialshade: tooth.materialshade,
-        materialshadePrice: materialshade.price,
-        implant: tooth.implant,
-        implantPrice: implant.price,
-        additionalscan: tooth.additionalscan,
-        additionalscanPrice: additionalscan.price,
-        volume: tooth.volume,
-        colorCode: color.code,
-        color: color.id,
-      })
-      .from(tooth)
-      .leftJoin(category, eq(tooth.category, category.id))
-      .leftJoin(device, eq(tooth.device, device.id))
-      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
-      .leftJoin(implant, eq(tooth.implant, implant.id))
-      .leftJoin(additionalscan, eq(tooth.additionalscan, additionalscan.id))
-      .leftJoin(color, eq(category.color, color.id))
-      .where(inArray(tooth.id, teethIds));
-
-    const finalTeeth = detailedTeeth.map((t) => {
-      const volumeTotal = Array.isArray(t.volume)
-        ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
-        : 0;
-
-      const total =
-        Number(t.categoryPrice ?? 0) +
-        Number(t.devicePrice ?? 0) +
-        Number(t.materialshadePrice ?? 0) +
-        Number(t.implantPrice ?? 0) +
-        Number(t.additionalscanPrice ?? 0) +
-        volumeTotal;
-
-      return {
-        ...t,
-        price: total,
-      };
-    });
-
-    const [vipPrice] = await db.select({ price: vip.price }).from(vip);
     return successResponse(
       res,
-      201,
+      200,
       {
-        order: newOrder,
-        teeth: finalTeeth,
-        teethIds,
-        vip: vipPrice ? vipPrice.price : 0,
+        finalSubtotal,
+        vipAmount,
+        totalBeforeTax,
+        taxAmount,
+        finalTotal,
       },
-      "Order created successfully"
+      "amir"
     );
   } catch (error) {
     console.error("Error creating order:", error);
@@ -199,13 +195,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         categoryName: category.title,
         categoryPrice: category.price,
         device: tooth.device,
-        devicePrice: device.price,
         materialshade: tooth.materialshade,
-        materialshadePrice: materialshade.price,
-        implant: tooth.implant,
-        implantPrice: implant.price,
-        additionalscan: tooth.additionalscan,
-        additionalscanPrice: additionalscan.price,
         volume: tooth.volume,
         colorCode: color.code,
         color: color.id,
@@ -214,8 +204,6 @@ export const getOrderWithId = async (req: Request, res: Response) => {
       .leftJoin(category, eq(tooth.category, category.id))
       .leftJoin(device, eq(tooth.device, device.id))
       .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
-      .leftJoin(implant, eq(tooth.implant, implant.id))
-      .leftJoin(additionalscan, eq(tooth.additionalscan, additionalscan.id))
       .leftJoin(color, eq(category.color, color.id))
       .where(inArray(tooth.id, teethIds));
 
@@ -224,13 +212,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
         : 0;
 
-      const totalPrice =
-        Number(t.categoryPrice ?? 0) +
-        Number(t.devicePrice ?? 0) +
-        Number(t.materialshadePrice ?? 0) +
-        Number(t.implantPrice ?? 0) +
-        Number(t.additionalscanPrice ?? 0) +
-        volumeTotal;
+      const totalPrice = Number(t.categoryPrice ?? 0) + volumeTotal;
 
       return {
         ...t,
@@ -311,8 +293,6 @@ export const updateOrder = async (req: Request, res: Response) => {
       category: +t.category || null,
       device: +t.device || null,
       materialshade: +t.materialshade || null,
-      implant: +t.implant || null,
-      additionalscan: +t.additionalscan || null,
       volume: t.volume || [],
     }));
 
@@ -320,8 +300,6 @@ export const updateOrder = async (req: Request, res: Response) => {
       category,
       device,
       materialshade,
-      implant,
-      additionalscan,
       volume,
     });
 
@@ -346,13 +324,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         categoryName: category.title,
         categoryPrice: category.price,
         device: tooth.device,
-        devicePrice: device.price,
         materialshade: tooth.materialshade,
-        materialshadePrice: materialshade.price,
-        implant: tooth.implant,
-        implantPrice: implant.price,
-        additionalscan: tooth.additionalscan,
-        additionalscanPrice: additionalscan.price,
         volume: tooth.volume,
         colorCode: color.code,
         color: color,
@@ -361,8 +333,6 @@ export const updateOrder = async (req: Request, res: Response) => {
       .leftJoin(category, eq(tooth.category, category.id))
       .leftJoin(device, eq(tooth.device, device.id))
       .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
-      .leftJoin(implant, eq(tooth.implant, implant.id))
-      .leftJoin(additionalscan, eq(tooth.additionalscan, additionalscan.id))
       .leftJoin(color, eq(category.color, color.id))
       .where(inArray(tooth.id, teethIds));
 
@@ -370,13 +340,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       const volumeTotal = Array.isArray(t.volume)
         ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
         : 0;
-      const total =
-        Number(t.categoryPrice ?? 0) +
-        Number(t.devicePrice ?? 0) +
-        Number(t.materialshadePrice ?? 0) +
-        Number(t.implantPrice ?? 0) +
-        Number(t.additionalscanPrice ?? 0) +
-        volumeTotal;
+      const total = Number(t.categoryPrice ?? 0) + volumeTotal;
 
       return {
         ...t,
@@ -502,9 +466,9 @@ export const orderList = async (req: Request, res: Response) => {
       eq(orders.isDeleted, 0),
     ];
 
-    if (isDelivered !== undefined) {
-      whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
-    }
+    // if (isDelivered !== undefined) {
+    //   whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
+    // }
 
     const paymentStatusCondition = paymentStatus
       ? eq(payment.status, paymentStatus)
@@ -523,7 +487,6 @@ export const orderList = async (req: Request, res: Response) => {
         id: orders.id,
         title: orders.title,
         status: orders.status,
-        isDelivered: orders.isDelivered,
         paymentstatus: orders.paymentstatus,
         totalaprice: orders.totalaprice,
         comment: orders.comment,
@@ -692,9 +655,9 @@ export const orderListAdmin = async (req: Request, res: Response) => {
     /* ------------------ WHERE CONDITIONS ------------------ */
     const whereConditions = [eq(orders.isDeleted, 0)];
 
-    if (isDelivered !== undefined) {
-      whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
-    }
+    // if (isDelivered !== undefined) {
+    //   whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
+    // }
 
     const paymentStatusCondition = paymentStatus
       ? eq(payment.status, paymentStatus)
@@ -882,7 +845,6 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
     await db
       .update(orders)
       .set({
-        isDelivered: true,
         deliveryDate: new Date(),
         status: "finaldelivery" as OrderStatus,
       })
@@ -902,29 +864,137 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
   }
 };
 
-export const calculateFormPrice = async (req: Request, res: Response) => {
-  try { 
-    const { teeth, } = req.body;
+export const calculateOrderPrice = async (req: Request, res: Response) => {
+  try {
+    console.log(req.body)
+    const { teeth } = req.body;
+    console.log(teeth)
+    if (!teeth || !Array.isArray(teeth)) {
+      return errorResponse(res, 400, "Invalid order data", null);
+    }
 
-    const teethValues = teeth.map((toothData: any) => ({
-      toothnumber: +toothData.toothnumber || null,
-      category: +toothData.category || null,
-      device: +toothData.device || null,
-      materialshade: +toothData.materialshade || null,
-      materials : [],
-      volume: toothData.volume || [],
-    }));
+    const [taxItem] = await db.select().from(tax);
+    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
-    const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
-      category,
-      device,
-      materialshade,
-      implant,
-      additionalscan,
-      volume,
-    });
+    const [vipItem] = await db.select().from(vip);
+    const vipPrice = vip && vipItem ? Number(vipItem.price || 0) : 0;
 
-    return successResponse(res, 200, { totalPrice }, "Price calculated successfully");
+    const teethDetails: any[] = [];
+    let hasMissingPrice = false;
+    let subtotal = 0;
+
+    for (const toothData of teeth) {
+      const toothDetail: any = {
+        toothnumber: toothData.toothnumber || null,
+        category: null,
+        categoryPrice: 0,
+        materials: [],
+        materialsTotal: 0,
+        toothTotal: 0,
+        hasMissingPrice: false,
+      };
+
+      // Get category price
+      if (toothData.category) {
+        const [categoryItem] = await db
+          .select({
+            id: category.id,
+            title: category.title,
+            color: color.code,
+            price: category.price,
+          })
+          .from(category)
+          .leftJoin(color, eq(category.color, color.id))
+          .where(eq(category.id, toothData.category));
+
+        if (categoryItem) {
+          toothDetail.category = {
+            id: categoryItem.id,
+            title: categoryItem.title,
+            color: categoryItem.color,
+            price: categoryItem.price ? Number(categoryItem.price) : null,
+          };
+
+          if (categoryItem.price !== "0.00") {
+            toothDetail.categoryPrice = Number(categoryItem.price);
+          } else {
+            toothDetail.hasMissingPrice = true;
+            hasMissingPrice = true;
+          }
+        } else {
+          toothDetail.hasMissingPrice = true;
+          hasMissingPrice = true;
+        }
+      } else {
+        toothDetail.hasMissingPrice = true;
+        hasMissingPrice = true;
+      }
+
+      if (toothData.materials && Array.isArray(toothData.materials)) {
+        for (const mat of toothData.materials) {
+          if (mat.material) {
+            const [materialItem] = await db
+              .select()
+              .from(material)
+              .where(eq(material.id, mat.material));
+
+            if (materialItem) {
+              const materialPrice =
+                materialItem.price !== "0.00"
+                  ? Number(materialItem.price)
+                  : null;
+              toothDetail.materials.push({
+                id: materialItem.id,
+                title: materialItem.title,
+                price: materialPrice,
+              });
+
+              if (materialPrice !== null) {
+                toothDetail.materialsTotal += materialPrice;
+              } else {
+                toothDetail.hasMissingPrice = true;
+                hasMissingPrice = true;
+              }
+            } else {
+              toothDetail.hasMissingPrice = true;
+              hasMissingPrice = true;
+            }
+          }
+        }
+      }
+
+      if (!toothDetail.hasMissingPrice) {
+        toothDetail.toothTotal =
+          toothDetail.categoryPrice + toothDetail.materialsTotal;
+        subtotal += toothDetail.toothTotal;
+      } else {
+        toothDetail.toothTotal = 0;
+      }
+      teethDetails.push(toothDetail);
+    }
+
+    const finalSubtotal = hasMissingPrice ? 0 : subtotal;
+    const vipAmount = hasMissingPrice ? 0 : vipPrice;
+    const totalBeforeTax = finalSubtotal + vipAmount;
+    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
+    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
+
+    return successResponse(
+      res,
+      200,
+      {
+        teeth: teethDetails,
+        summary: {
+          subtotal: finalSubtotal,
+          vip: vipAmount,
+          taxPercent: taxPercent,
+          taxAmount: taxAmount,
+          total: finalTotal,
+          hasMissingPrice: hasMissingPrice,
+        },
+      },
+      "Price calculated successfully"
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
