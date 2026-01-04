@@ -115,6 +115,34 @@ export const processOrderFormData = (
         }
       }
 
+      // اضافه کردن فیلدهای جداگانه از FormData (vip, comment, connections)
+      // این فیلدها ممکن است به صورت جداگانه در FormData ارسال شوند
+      // اگر در JSON string موجود باشند، اولویت با آن است
+      if (req.body.vip !== undefined && orderData.vip === undefined) {
+        orderData.vip = req.body.vip === 'true' || req.body.vip === true || req.body.vip === '1' || req.body.vip === 1;
+      }
+      if (req.body.comment !== undefined && orderData.comment === undefined) {
+        orderData.comment = req.body.comment || null;
+      }
+      if (req.body.connections !== undefined && (orderData.connections === undefined || !Array.isArray(orderData.connections))) {
+        try {
+          orderData.connections = typeof req.body.connections === 'string'
+            ? JSON.parse(req.body.connections)
+            : req.body.connections;
+        } catch {
+          orderData.connections = Array.isArray(req.body.connections) ? req.body.connections : [];
+        }
+      }
+      if (req.body.antagonists !== undefined && (orderData.antagonists === undefined || !Array.isArray(orderData.antagonists))) {
+        try {
+          orderData.antagonists = typeof req.body.antagonists === 'string'
+            ? JSON.parse(req.body.antagonists)
+            : req.body.antagonists;
+        } catch {
+          orderData.antagonists = Array.isArray(req.body.antagonists) ? req.body.antagonists : [];
+        }
+      }
+
       // پردازش فایل‌ها و اضافه کردن به ساختار
       const files = req.files as Express.Multer.File[];
       
@@ -132,9 +160,20 @@ export const processOrderFormData = (
           filesArray.push(file);
         });
 
-        // اضافه کردن فایل‌ها به ساختار orderData
+        // پردازش فایل root level (file)
+        const rootFile = filesMap.get('file');
+        if (rootFile) {
+          orderData.file = rootFile.path;
+        } else if (orderData.file === undefined || 
+                   (typeof orderData.file === 'object' && Object.keys(orderData.file).length === 0)) {
+          orderData.file = null;
+        }
+
+        // اضافه کردن فایل‌ها به ساختار orderData (materials files)
         if (orderData.teeth && Array.isArray(orderData.teeth)) {
           let fileIndex = 0;
+          // فیلتر کردن فایل‌هایی که root file نیستند (برای materials)
+          const materialsFiles = filesArray.filter(f => f.fieldname !== 'file');
           
           orderData.teeth.forEach((tooth: any, toothIndex: number) => {
             if (tooth.materials && Array.isArray(tooth.materials)) {
@@ -153,8 +192,8 @@ export const processOrderFormData = (
                 if (!file && material.file !== null && material.file !== undefined) {
                   // اگر material.file یک object است (مثل {} که نشان می‌دهد فایل باید ارسال شود)
                   if (typeof material.file === 'object' && Object.keys(material.file).length === 0) {
-                    if (fileIndex < filesArray.length) {
-                      file = filesArray[fileIndex];
+                    if (fileIndex < materialsFiles.length) {
+                      file = materialsFiles[fileIndex];
                       fileIndex++;
                     }
                   }
@@ -175,6 +214,11 @@ export const processOrderFormData = (
         }
       } else {
         // اگر فایلی ارسال نشد، تمام file fields را null می‌کنیم
+        if (orderData.file === undefined || 
+            (typeof orderData.file === 'object' && Object.keys(orderData.file).length === 0)) {
+          orderData.file = null;
+        }
+        
         if (orderData.teeth && Array.isArray(orderData.teeth)) {
           orderData.teeth.forEach((tooth: any) => {
             if (tooth.materials && Array.isArray(tooth.materials)) {

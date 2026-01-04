@@ -49,7 +49,6 @@ export const orders = pgTable("orders", {
   file: text("file"),
   adminFile: text("adminFile"),
   discount: integer("discount"),
-  tax: decimal("totalaprice", { precision: 10, scale: 2 }),
   vip: boolean("vip").default(false),
   deliveryDate: timestamp("deliveryDate"),
   connections: integer("connections").array(),

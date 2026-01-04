@@ -19,7 +19,8 @@ import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
 export const createOrder = async (req: Request, res: Response) => {
   try {
-    console.log(req.body);
+    const user = (req as any).user;
+
     const {
       title,
       patientname,
@@ -35,124 +36,196 @@ export const createOrder = async (req: Request, res: Response) => {
       connections,
       antagonists,
     } = req.body;
-    const [taxItem] = await db.select().from(tax);
-    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
-    const [vipItem] = await db.select().from(vip);
-    const vipPrice = vipParametr && vipItem ? Number(vipItem.price || 0) : 0;
+    // ---------- validate teeth ----------
+    if (!teeth || !Array.isArray(teeth) || teeth.length === 0)
+      return errorResponse(
+        res,
+        400,
+        "At least one tooth must be selected",
+        null
+      );
 
-    const teethDetails: any[] = [];
-    let hasMissingPrice = false;
-    let subtotal = 0;
-
-    for (const toothData of teeth) {
-      const toothDetail: any = {
-        toothnumber: toothData.toothnumber || null,
-        category: null,
-        categoryPrice: 0,
-        materials: [],
-        materialsTotal: 0,
-        toothTotal: 0,
-        hasMissingPrice: false,
+    // ---------- create teeth values & compute prices ----------
+    let totalPrice = 0;
+    const teethValues = teeth.map((t: any) => {
+      const materialsData = t.materials && Array.isArray(t.materials) 
+        ? t.materials.map((mat: any) => ({
+            material: mat.material || null,
+            file: mat.file || null,
+            text: mat.text || null,
+          }))
+        : [];
+      
+      return {
+        toothnumber: +t.toothnumber || null,
+        category: +t.category || null,
+        device: +t.device || null,
+        materialshade: +t.materialshade || null,
+        materials: materialsData,
+        volume: t.volume || [],
       };
+    });
 
-      // Get category price
-      if (toothData.category) {
+    // Calculate total price: category + materials (without volume)
+    for (let i = 0; i < teeth.length; i++) {
+      const t = teeth[i];
+      let toothPrice = 0;
+
+      // Category price
+      if (t.category) {
         const [categoryItem] = await db
-          .select({
-            id: category.id,
-            title: category.title,
-            color: color.code,
-            price: category.price,
-          })
+          .select({ price: category.price })
           .from(category)
-          .leftJoin(color, eq(category.color, color.id))
-          .where(eq(category.id, toothData.category));
-
-        if (categoryItem) {
-          toothDetail.category = {
-            id: categoryItem.id,
-            title: categoryItem.title,
-            color: categoryItem.color,
-            price: categoryItem.price ? Number(categoryItem.price) : null,
-          };
-
-          if (categoryItem.price !== "0.00") {
-            toothDetail.categoryPrice = Number(categoryItem.price);
-          } else {
-            toothDetail.hasMissingPrice = true;
-            hasMissingPrice = true;
-          }
-        } else {
-          toothDetail.hasMissingPrice = true;
-          hasMissingPrice = true;
+          .where(eq(category.id, +t.category))
+          .limit(1);
+        
+        if (categoryItem && categoryItem.price && categoryItem.price !== "0.00") {
+          toothPrice += Number(categoryItem.price);
         }
-      } else {
-        toothDetail.hasMissingPrice = true;
-        hasMissingPrice = true;
       }
 
-      if (toothData.materials && Array.isArray(toothData.materials)) {
-        for (const mat of toothData.materials) {
+      // Materials price
+      if (t.materials && Array.isArray(t.materials)) {
+        for (const mat of t.materials) {
           if (mat.material) {
             const [materialItem] = await db
-              .select()
+              .select({ price: material.price })
               .from(material)
-              .where(eq(material.id, mat.material));
-
-            if (materialItem) {
-              const materialPrice =
-                materialItem.price !== "0.00"
-                  ? Number(materialItem.price)
-                  : null;
-              toothDetail.materials.push({
-                id: materialItem.id,
-                title: materialItem.title,
-                price: materialPrice,
-              });
-
-              if (materialPrice !== null) {
-                toothDetail.materialsTotal += materialPrice;
-              } else {
-                toothDetail.hasMissingPrice = true;
-                hasMissingPrice = true;
-              }
-            } else {
-              toothDetail.hasMissingPrice = true;
-              hasMissingPrice = true;
+              .where(eq(material.id, mat.material))
+              .limit(1);
+            
+            if (materialItem && materialItem.price && materialItem.price !== "0.00") {
+              toothPrice += Number(materialItem.price);
             }
           }
         }
       }
 
-      if (!toothDetail.hasMissingPrice) {
-        toothDetail.toothTotal =
-          toothDetail.categoryPrice + toothDetail.materialsTotal;
-        subtotal += toothDetail.toothTotal;
-      } else {
-        toothDetail.toothTotal = 0;
-      }
-
-      teethDetails.push(toothDetail);
+      totalPrice += toothPrice;
     }
 
-    const finalSubtotal = hasMissingPrice ? 0 : subtotal;
-    const vipAmount = hasMissingPrice ? 0 : vipPrice;
-    const totalBeforeTax = finalSubtotal + vipAmount;
-    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
-    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
+    // Get VIP and Tax
+    const [taxItem] = await db.select().from(tax);
+    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
+
+    const [vipItem] = await db.select().from(vip);
+    const vipPrice = vipItem ? Number(vipItem.price || 0) : 0;
+
+    // Calculate final total: subtotal + VIP + Tax
+    const isVip = vipParametr === "true" || vipParametr === true;
+    const vipAmount = isVip ? vipPrice : 0;
+    const totalBeforeTax = totalPrice + vipAmount;
+    const taxAmount = (totalBeforeTax * taxPercent) / 100;
+    const finalTotal = totalBeforeTax + taxAmount;
+
+    // ---------- create order ----------
+    const [createdOrder] = await db
+      .insert(orders)
+      .values({
+        title: title || null,
+        user_id: user.userId,
+        patientname: patientname || null,
+        patientage: patientage ? parseInt(patientage, 10) : null,
+        patientgender: patientgender || null,
+        report: report ? parseInt(report, 10) : null,
+        status: "uploadfile" as OrderStatus,
+        totalaprice: String(finalTotal),
+        paymentstatus: paymentstatus || false,
+        comment: comment || null,
+        file: file || null,
+        discount: discount ? parseInt(discount, 10) : null,
+        vip: vipParametr === "true" || vipParametr === true || false,
+        connections: connections || [],
+        antagonists: antagonists || [],
+      })
+      .returning();
+
+    // ---------- create teeth ----------
+    const createdTeeth = await db.insert(tooth).values(teethValues).returning();
+
+    // ---------- insert orderTeeth ----------
+    const orderTeethData = createdTeeth.map((t) => ({
+      orderId: createdOrder.id,
+      toothId: t.id,
+    }));
+    if (orderTeethData.length)
+      await db.insert(orderTeeth).values(orderTeethData);
+
+    const teethIds = createdTeeth.map((t) => t.id);
+
+    // ---------- fetch detailed teeth info ----------
+    const detailedTeeth = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        category: tooth.category,
+        categoryName: category.title,
+        categoryPrice: category.price,
+        device: tooth.device,
+        materialshade: tooth.materialshade,
+        materials: tooth.materials,
+        volume: tooth.volume,
+        colorCode: color.code,
+        color: color.id,
+      })
+      .from(tooth)
+      .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(color, eq(category.color, color.id))
+      .where(inArray(tooth.id, teethIds));
+
+    // Calculate price for each tooth: category + materials (without volume)
+    const finalTeeth = await Promise.all(
+      detailedTeeth.map(async (t) => {
+        let toothTotalPrice = Number(t.categoryPrice ?? 0);
+
+        // Add materials price
+        if (t.materials && Array.isArray(t.materials)) {
+          for (const mat of t.materials) {
+            if (mat.material) {
+              const [materialItem] = await db
+                .select({ price: material.price })
+                .from(material)
+                .where(eq(material.id, mat.material))
+                .limit(1);
+
+              if (materialItem && materialItem.price && materialItem.price !== "0.00") {
+                toothTotalPrice += Number(materialItem.price);
+              }
+            }
+          }
+        }
+
+        return {
+          ...t,
+          price: toothTotalPrice,
+        };
+      })
+    );
+
+    // ---------- create payment ----------
+    const [createdPayment] = await db
+      .insert(payment)
+      .values({
+        order_id: createdOrder.id,
+        type: "uploadfile",
+        status: "pending",
+      })
+      .returning();
 
     return successResponse(
       res,
       200,
       {
-        finalSubtotal,
-        vipAmount,
-        totalBeforeTax,
-        taxAmount,
-        finalTotal,
+        order: createdOrder,
+        teeth: finalTeeth,
+        teethIds,
+        payment: createdPayment,
+        vip: vipPrice || 0,
       },
-      "amir"
+      "Order created successfully"
     );
   } catch (error) {
     console.error("Error creating order:", error);
@@ -866,9 +939,7 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
 
 export const calculateOrderPrice = async (req: Request, res: Response) => {
   try {
-    console.log(req.body)
-    const { teeth } = req.body;
-    console.log(teeth)
+    const { teeth , vip: vipParametr} = req.body;
     if (!teeth || !Array.isArray(teeth)) {
       return errorResponse(res, 400, "Invalid order data", null);
     }
@@ -972,13 +1043,13 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
       }
       teethDetails.push(toothDetail);
     }
-
+ 
     const finalSubtotal = hasMissingPrice ? 0 : subtotal;
-    const vipAmount = hasMissingPrice ? 0 : vipPrice;
+    const vipAmount = !hasMissingPrice || !vipParametr ? 0 : vipPrice;
     const totalBeforeTax = finalSubtotal + vipAmount;
     const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
     const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
-
+    
     return successResponse(
       res,
       200,
@@ -991,6 +1062,12 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
           taxAmount: taxAmount,
           total: finalTotal,
           hasMissingPrice: hasMissingPrice,
+          vipInfo : vipItem ? {
+            price : vipItem.price,
+            des : vipItem.description,
+            startTime : vipItem.startTime,
+            endTime : vipItem.endTime,
+          } : null
         },
       },
       "Price calculated successfully"
