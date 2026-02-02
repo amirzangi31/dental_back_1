@@ -21,8 +21,6 @@ const fileFilter = (
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
-  // می‌توانید انواع فایل مجاز را اینجا تعریف کنید
-  // برای مثال: فقط تصاویر
   const allowedMimes = [
     "image/jpeg",
     "image/jpg",
@@ -32,8 +30,9 @@ const fileFilter = (
     "application/pdf",
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/x-zip-compressed",
+    "application/octet-stream"
   ];
-
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
@@ -149,7 +148,9 @@ export const uploadSingleWithPathFix = (fieldName: string = "file") => {
 };
 
 // Middleware برای آپلود چند فایل با نام‌های مختلف + فیکس کردن مسیرها
-export const uploadFieldsWithPathFix = (fields: Array<{ name: string; maxCount?: number }>) => {
+export const uploadFieldsWithPathFix = (
+  fields: Array<{ name: string; maxCount?: number }>
+) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const uploadMiddleware = upload.fields(fields);
     uploadMiddleware(req, res, (err) => {
@@ -218,7 +219,9 @@ export const uploadMultiple = (
 };
 
 // Middleware برای آپلود چند فایل با نام‌های مختلف
-export const uploadFields = (fields: Array<{ name: string; maxCount?: number }>) => {
+export const uploadFields = (
+  fields: Array<{ name: string; maxCount?: number }>
+) => {
   return (req: Request, res: Response, next: NextFunction) => {
     const uploadMiddleware = upload.fields(fields);
     uploadMiddleware(req, res, (err) => {
@@ -243,4 +246,3 @@ export const uploadFields = (fields: Array<{ name: string; maxCount?: number }>)
 
 // Export multer instance برای استفاده مستقیم
 export { upload };
-

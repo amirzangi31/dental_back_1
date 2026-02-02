@@ -19,7 +19,6 @@ export const getVolume = async (req: Request, res: Response) => {
         start: volume.start,
         end: volume.end,
         unit: volume.unit,
-
         category: volume.category,
       })
       .from(volume)

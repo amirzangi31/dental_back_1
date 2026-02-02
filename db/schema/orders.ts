@@ -27,7 +27,7 @@ export const orderStatusEnum = [
 export type OrderStatus = (typeof orderStatusEnum)[number];
 export const orderStatusPgEnum = pgEnum("status", orderStatusEnum);
 
-export const orders = pgTable("orders", {
+export const orders: any = pgTable("orders", {
   id: serial("id").primaryKey(),
   title: varchar("title", { length: 255 }),
   user_id: integer("user_id")
@@ -47,6 +47,8 @@ export const orders = pgTable("orders", {
   antagonists: integer("antagonists").array(),
   comment: text("comment"),
   file: text("file"),
+  refrence :  integer("refrence").references(() => orders.id)
+  .default(null as any),
   adminFile: text("adminFile"),
   discount: integer("discount"),
   vip: boolean("vip").default(false),

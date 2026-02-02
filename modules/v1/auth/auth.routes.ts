@@ -17,6 +17,7 @@ import {
   deleteDesigner,
   getDesigners,
   getByIdDesigner,
+  getDesignersDropdown,
   } from "./auth.controller";
 import { validate } from "../../../middleware/schemaValidate";
 import {
@@ -56,6 +57,7 @@ router.post("/designer", auth, isAdmin, validate(createDesignerSchema), createDe
 router.put("/designer/:id", auth, isAdmin, validate(updateDesignerSchema), updateDesigner);
 router.delete("/designer/:id", auth, isAdmin, deleteDesigner);
 router.get("/designers", auth, isAdmin, getDesigners);
+router.get("/designers/dropdown", auth, isAdmin, getDesignersDropdown);
 router.get("/designer/:id", auth, isAdmin, getByIdDesigner);
 export default router;
   

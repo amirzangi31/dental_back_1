@@ -3,8 +3,9 @@ import path from "path";
 import { Request, Response, NextFunction } from "express";
 import { errorResponse } from "../utils/responses";
 import fs from "fs";
+import { db } from "../db";
+import { files as filesTable } from "../db/schema/files";
 
-// ایجاد پوشه order-files در صورت عدم وجود
 const orderFilesDir = "order-files";
 if (!fs.existsSync(orderFilesDir)) {
   fs.mkdirSync(orderFilesDir, { recursive: true });
@@ -55,26 +56,15 @@ const upload = multer({
   },
 });
 
-/**
- * Middleware برای پردازش FormData در ایجاد سفارش
- * این middleware:
- * 1. فایل‌ها را از FormData دریافت و ذخیره می‌کند
- * 2. JSON string را parse می‌کند
- * 3. فایل‌ها را به ساختار JSON اضافه می‌کند
- * 
- * انتظار می‌رود که:
- * - یک فیلد 'orderData' حاوی JSON string از داده‌های سفارش
- * - فایل‌ها با نام‌های 'teeth[toothIndex].materials[materialIndex].file' ارسال شوند
- */
+
 export const processOrderFormData = (
   req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  // استفاده از any() برای دریافت تمام فیلدها
   const uploadMiddleware = upload.any();
-  
-  uploadMiddleware(req, res, (err) => {
+
+  uploadMiddleware(req, res, async (err) => {
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
@@ -91,16 +81,13 @@ export const processOrderFormData = (
     }
 
     try {
-      // Parse کردن JSON string از orderData
       let orderData: any = {};
-      
+
       if (req.body.orderData) {
         orderData = typeof req.body.orderData === 'string' 
           ? JSON.parse(req.body.orderData) 
           : req.body.orderData;
       } else {
-        // اگر orderData وجود نداشت، سعی می‌کنیم تمام body را parse کنیم
-        // این برای حالتی است که کل داده به صورت JSON string ارسال شده
         const bodyKeys = Object.keys(req.body);
         if (bodyKeys.length > 0) {
           const firstKey = bodyKeys[0];
@@ -109,15 +96,11 @@ export const processOrderFormData = (
               ? JSON.parse(req.body[firstKey])
               : req.body[firstKey];
           } catch {
-            // اگر parse نشد، از req.body استفاده می‌کنیم
             orderData = req.body;
           }
         }
       }
 
-      // اضافه کردن فیلدهای جداگانه از FormData (vip, comment, connections)
-      // این فیلدها ممکن است به صورت جداگانه در FormData ارسال شوند
-      // اگر در JSON string موجود باشند، اولویت با آن است
       if (req.body.vip !== undefined && orderData.vip === undefined) {
         orderData.vip = req.body.vip === 'true' || req.body.vip === true || req.body.vip === '1' || req.body.vip === 1;
       }
@@ -143,16 +126,13 @@ export const processOrderFormData = (
         }
       }
 
-      // پردازش فایل‌ها و اضافه کردن به ساختار
       const files = req.files as Express.Multer.File[];
-      
+
       if (files && files.length > 0) {
-        // ایجاد یک map برای نگهداری فایل‌ها بر اساس fieldname
         const filesMap = new Map<string, Express.Multer.File>();
         const filesArray: Express.Multer.File[] = [];
-        
+
         files.forEach((file) => {
-          // فیکس کردن مسیر
           if (file.path) {
             file.path = file.path.replace(/\\/g, "/");
           }
@@ -160,37 +140,36 @@ export const processOrderFormData = (
           filesArray.push(file);
         });
 
-        // پردازش فایل root level (file)
         const rootFile = filesMap.get('file');
         if (rootFile) {
+          // فایل اصلی سفارش همچنان به صورت مسیر ذخیره می‌شود
           orderData.file = rootFile.path;
         } else if (orderData.file === undefined || 
                    (typeof orderData.file === 'object' && Object.keys(orderData.file).length === 0)) {
           orderData.file = null;
         }
 
-        // اضافه کردن فایل‌ها به ساختار orderData (materials files)
         if (orderData.teeth && Array.isArray(orderData.teeth)) {
           let fileIndex = 0;
-          // فیلتر کردن فایل‌هایی که root file نیستند (برای materials)
           const materialsFiles = filesArray.filter(f => f.fieldname !== 'file');
-          
-          orderData.teeth.forEach((tooth: any, toothIndex: number) => {
+
+          // حلقه‌های همگام برای استفاده از await
+          for (let toothIndex = 0; toothIndex < orderData.teeth.length; toothIndex++) {
+            const tooth: any = orderData.teeth[toothIndex];
+
             if (tooth.materials && Array.isArray(tooth.materials)) {
-              tooth.materials.forEach((material: any, materialIndex: number) => {
-                // روش 1: جستجو با نام دقیق field
+              for (let materialIndex = 0; materialIndex < tooth.materials.length; materialIndex++) {
+                const material: any = tooth.materials[materialIndex];
+
                 const fieldName1 = `teeth[${toothIndex}].materials[${materialIndex}].file`;
                 const fieldName2 = `teeth.${toothIndex}.materials.${materialIndex}.file`;
                 const fieldName3 = `teeth[${toothIndex}][materials][${materialIndex}][file]`;
-                
+
                 let file = filesMap.get(fieldName1) || 
                           filesMap.get(fieldName2) || 
                           filesMap.get(fieldName3);
-                
-                // روش 2: اگر فایل با نام دقیق پیدا نشد، از index استفاده می‌کنیم
-                // این برای حالتی است که فایل‌ها به ترتیب ارسال می‌شوند
+
                 if (!file && material.file !== null && material.file !== undefined) {
-                  // اگر material.file یک object است (مثل {} که نشان می‌دهد فایل باید ارسال شود)
                   if (typeof material.file === 'object' && Object.keys(material.file).length === 0) {
                     if (fileIndex < materialsFiles.length) {
                       file = materialsFiles[fileIndex];
@@ -198,22 +177,32 @@ export const processOrderFormData = (
                     }
                   }
                 }
-                
+
                 if (file) {
-                  // ذخیره مسیر فایل در material
-                  material.file = file.path;
+                  // ذخیره فایل متریال در جدول files و قرار دادن id در material.file
+                  const user = (req as any).user;
+                  const [fileRecord] = await db
+                    .insert(filesTable)
+                    .values({
+                      filename: path.basename(file.path),
+                      originalname: file.originalname,
+                      mimetype: file.mimetype,
+                      size: file.size,
+                      path: file.path,
+                      user_id: user?.userId || user?.id || null,
+                    })
+                    .returning();
+
+                  material.file = fileRecord.id;
                 } else if (material.file === null || material.file === undefined || 
                           (typeof material.file === 'object' && Object.keys(material.file).length === 0)) {
-                  // اگر فایلی وجود نداشت یا یک object خالی بود، null بگذار
                   material.file = null;
                 }
-                // اگر material.file قبلاً یک string (مسیر) یا مقدار دیگری بود، آن را نگه می‌داریم
-              });
+              }
             }
-          });
+          }
         }
       } else {
-        // اگر فایلی ارسال نشد، تمام file fields را null می‌کنیم
         if (orderData.file === undefined || 
             (typeof orderData.file === 'object' && Object.keys(orderData.file).length === 0)) {
           orderData.file = null;
@@ -235,7 +224,6 @@ export const processOrderFormData = (
         }
       }
 
-      // جایگزین کردن req.body با داده‌های پردازش شده
       req.body = orderData;
       
       next();

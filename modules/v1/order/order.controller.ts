@@ -12,11 +12,13 @@ import { volume } from "../../../db/schema/volume";
 import { color } from "../../../db/schema/color";
 import { files } from "../../../db/schema/files";
 import path from "path";
+import fs from "fs";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
 import { payment, PaymentStatus } from "../../../db/schema/payment";
 import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
+import { users } from "../../../db/schema/users";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -49,14 +51,15 @@ export const createOrder = async (req: Request, res: Response) => {
     // ---------- create teeth values & compute prices ----------
     let totalPrice = 0;
     const teethValues = teeth.map((t: any) => {
-      const materialsData = t.materials && Array.isArray(t.materials) 
-        ? t.materials.map((mat: any) => ({
-            material: mat.material || null,
-            file: mat.file || null,
-            text: mat.text || null,
-          }))
-        : [];
-      
+      const materialsData =
+        t.materials && Array.isArray(t.materials)
+          ? t.materials.map((mat: any) => ({
+              material: mat.material || null,
+              file: mat.file || null,
+              text: mat.text || null,
+            }))
+          : [];
+
       return {
         toothnumber: +t.toothnumber || null,
         category: +t.category || null,
@@ -79,8 +82,12 @@ export const createOrder = async (req: Request, res: Response) => {
           .from(category)
           .where(eq(category.id, +t.category))
           .limit(1);
-        
-        if (categoryItem && categoryItem.price && categoryItem.price !== "0.00") {
+
+        if (
+          categoryItem &&
+          categoryItem.price &&
+          categoryItem.price !== "0.00"
+        ) {
           toothPrice += Number(categoryItem.price);
         }
       }
@@ -94,8 +101,12 @@ export const createOrder = async (req: Request, res: Response) => {
               .from(material)
               .where(eq(material.id, mat.material))
               .limit(1);
-            
-            if (materialItem && materialItem.price && materialItem.price !== "0.00") {
+
+            if (
+              materialItem &&
+              materialItem.price &&
+              materialItem.price !== "0.00"
+            ) {
               toothPrice += Number(materialItem.price);
             }
           }
@@ -120,7 +131,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const finalTotal = totalBeforeTax + taxAmount;
 
     // ---------- create order ----------
-    const [createdOrder] = await db
+    const [createdOrder]: any = await db
       .insert(orders)
       .values({
         title: title || null,
@@ -191,7 +202,11 @@ export const createOrder = async (req: Request, res: Response) => {
                 .where(eq(material.id, mat.material))
                 .limit(1);
 
-              if (materialItem && materialItem.price && materialItem.price !== "0.00") {
+              if (
+                materialItem &&
+                materialItem.price &&
+                materialItem.price !== "0.00"
+              ) {
                 toothTotalPrice += Number(materialItem.price);
               }
             }
@@ -272,6 +287,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         volume: tooth.volume,
         colorCode: color.code,
         color: color.id,
+        materials: tooth.materials,
       })
       .from(tooth)
       .leftJoin(category, eq(tooth.category, category.id))
@@ -286,11 +302,27 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         : 0;
 
       const totalPrice = Number(t.categoryPrice ?? 0) + volumeTotal;
+      const materials = Array.isArray(t.materials)
+        ? t.materials.map(async (material: any) => {
+            const file = await db
+              .select({
+                path: files.path,
+              })
+              .from(files)
+              .where(eq(files.id, material.file));
 
+            return {
+              ...material,
+              file: file[0].path,
+            };
+          })
+        : [];
+      console.log(materials);
       return {
         ...t,
         price: totalPrice,
         order: teeth.find((ot) => ot.toothId === t.id),
+        materials,
       };
     });
 
@@ -748,11 +780,11 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       .select()
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
+      .leftJoin(users, eq(users.id, orders.designer_id))
       .where(and(...whereConditions, paymentStatusCondition))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
-
     /* ------------------ CATEGORIES + PAYMENT (OUTPUT SAME) ------------------ */
     const ordersWithCategories = await Promise.all(
       ordersList.map(async ({ orders: order }) => {
@@ -883,6 +915,58 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
+export const uploadDesignerFile = async (req: Request, res: Response) => {
+  try {
+    const { orderId } = req.params;
+    const user = (req as any).user;
+    if (user.role !== "designer") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to access this resource",
+        null
+      );
+    }
+    const file = req.file;
+    console.log("file : ----", file);
+    if (file) {
+      const fileRecord = await db
+        .insert(files)
+        .values({
+          filename: file.filename,
+          originalname: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size,
+          path: file.path,
+          user_id: (req as any).user?.id || null,
+        })
+        .returning();
+    }
+    const [order] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, +orderId));
+    if (!order) return errorResponse(res, 404, "Order not found", null);
+
+    await db
+      .update(orders)
+      .set({
+        status: "design" as OrderStatus,
+        adminFile: file ? file.path : null,
+      })
+      .where(eq(orders.id, +orderId));
+    return successResponse(
+      res,
+      200,
+      {
+        order: orderId,
+      },
+      "Send File successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
 
 export const downloadAdminFile = async (req: Request, res: Response) => {
   try {
@@ -939,7 +1023,7 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
 
 export const calculateOrderPrice = async (req: Request, res: Response) => {
   try {
-    const { teeth , vip: vipParametr} = req.body;
+    const { teeth, vip: vipParametr } = req.body;
     if (!teeth || !Array.isArray(teeth)) {
       return errorResponse(res, 400, "Invalid order data", null);
     }
@@ -1043,13 +1127,13 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
       }
       teethDetails.push(toothDetail);
     }
- 
+
     const finalSubtotal = hasMissingPrice ? 0 : subtotal;
     const vipAmount = !hasMissingPrice || !vipParametr ? 0 : vipPrice;
     const totalBeforeTax = finalSubtotal + vipAmount;
     const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
     const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
-    
+
     return successResponse(
       res,
       200,
@@ -1062,15 +1146,444 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
           taxAmount: taxAmount,
           total: finalTotal,
           hasMissingPrice: hasMissingPrice,
-          vipInfo : vipItem ? {
-            price : vipItem.price,
-            des : vipItem.description,
-            startTime : vipItem.startTime,
-            endTime : vipItem.endTime,
-          } : null
+          vipInfo: vipItem
+            ? {
+                price: vipItem.price,
+                des: vipItem.description,
+                startTime: vipItem.startTime,
+                endTime: vipItem.endTime,
+              }
+            : null,
         },
       },
       "Price calculated successfully"
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = (req as any).user;
+
+    // Get order
+    const [order] = await db.select().from(orders).where(eq(orders.id, +id));
+
+    if (!order) {
+      return errorResponse(res, 404, "Order not found", null);
+    }
+    if (
+      order.user_id !== user.userId &&
+      user.role !== "admin" &&
+      user.role !== "designer"
+    ) {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to access this order",
+        null
+      );
+    }
+
+    // Check if PDF already exists
+    if (order.userfiles) {
+      const pdfPath = path.join(process.cwd(), order.userfiles);
+      if (fs.existsSync(pdfPath)) {
+        return res.download(pdfPath, `order-${id}-materials.pdf`, (err) => {
+          if (err) {
+            console.error("Error downloading existing PDF:", err);
+            // Continue to regenerate if download fails
+          }
+        });
+      }
+    }
+
+    // Get all teeth for the order
+    const teethRelations = await db
+      .select()
+      .from(orderTeeth)
+      .where(eq(orderTeeth.orderId, +id));
+
+    if (teethRelations.length === 0) {
+      return errorResponse(res, 404, "No teeth found for this order", null);
+    }
+
+    const teethIds = teethRelations.map((t) => t.toothId);
+
+    // Get teeth with materials
+    const teethData = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        materials: tooth.materials,
+      })
+      .from(tooth)
+      .where(inArray(tooth.id, teethIds));
+    // Extract all material file IDs + map meta (toothnumber, text) for each file
+    const fileIds: number[] = [];
+    const fileMetaMap: Record<
+      number,
+      { toothnumber: number | null; text: string | null }
+    > = {};
+
+    teethData.forEach((t) => {
+      if (t.materials && Array.isArray(t.materials)) {
+        t.materials.forEach((mat: any) => {
+          if (mat.file && typeof mat.file === "number") {
+            fileIds.push(mat.file);
+
+            if (!fileMetaMap[mat.file]) {
+              fileMetaMap[mat.file] = {
+                toothnumber:
+                  typeof t.toothnumber === "number" ? t.toothnumber : null,
+                text: mat.text ?? null,
+              };
+            }
+          }
+        });
+      }
+    });
+
+    if (fileIds.length === 0) {
+      return errorResponse(
+        res,
+        404,
+        "No material files found for this order",
+        null
+      );
+    }
+
+    // Get file paths from files table
+    const materialFiles = await db
+      .select({
+        id: files.id,
+        path: files.path,
+        originalname: files.originalname,
+        mimetype: files.mimetype,
+      })
+      .from(files)
+      .where(inArray(files.id, fileIds));
+
+    if (materialFiles.length === 0) {
+      return errorResponse(
+        res,
+        404,
+        "Material files not found in database",
+        null
+      );
+    }
+
+    // Create PDF directory if it doesn't exist
+    const pdfDir = path.join(process.cwd(), "order-pdfs");
+    if (!fs.existsSync(pdfDir)) {
+      fs.mkdirSync(pdfDir, { recursive: true });
+    }
+
+    // Generate PDF
+    const PDFDocument = require("pdfkit");
+    const pdfPath = path.join(pdfDir, `order-${id}-materials.pdf`);
+    const doc = new PDFDocument({ margin: 50 });
+
+    // Register a font that supports Farsi (Persian) if available
+    // توجه: حتماً فایل فونت را در مسیر زیر قرار بده یا مسیر را با ساختار پروژه‌ات هماهنگ کن
+    const faFontPath = path.join(
+      process.cwd(),
+      "assets",
+      "fonts",
+      "IRANSansX-Medium.ttf"
+    );
+    if (fs.existsSync(faFontPath)) {
+      doc.registerFont("fa", faFontPath);
+      doc.font("fa");
+    }
+
+    // Pipe PDF to file
+    const stream = fs.createWriteStream(pdfPath);
+    doc.pipe(stream);
+
+    // Add images to PDF
+    let imageCount = 0;
+    for (const file of materialFiles) {
+      const filePath = path.join(process.cwd(), file.path);
+
+      // Check if file exists
+      if (!fs.existsSync(filePath)) {
+        console.warn(`File not found: ${filePath}`);
+        continue;
+      }
+
+      // Check if it's an image
+      if (file.mimetype && file.mimetype.startsWith("image/")) {
+        try {
+          // Add image to PDF
+          if (imageCount > 0) {
+            doc.addPage();
+          }
+
+          const meta = fileMetaMap[file.id];
+          if (meta) {
+            if (meta.toothnumber !== null && meta.toothnumber !== undefined) {
+              doc.moveDown(0.5);
+
+              doc.fontSize(16).text(`Tooth Number: ${meta.toothnumber}`, {
+                align: "center",
+              });
+            }
+
+            if (meta.text) {
+              doc.moveDown(0.5);
+
+              doc.fontSize(12).text(`Description: ${meta.text}`, {
+                align: "center",
+              });
+            }
+          }
+
+          doc.moveDown(1);
+
+          doc.image(filePath, {
+            fit: [500, 500],
+            align: "center",
+            valign: "center",
+          });
+
+          doc.moveDown();
+          doc.fontSize(10).text(file.originalname || `File ${file.id}`, {
+            align: "center",
+          });
+
+          imageCount++;
+        } catch (imageError) {
+          console.error(`Error adding image ${filePath}:`, imageError);
+          // Continue with next file
+        }
+      }
+    }
+
+    // Finalize PDF
+    doc.end();
+
+    // Wait for PDF to be written
+    await new Promise<void>((resolve, reject) => {
+      stream.on("finish", () => {
+        resolve();
+      });
+      stream.on("error", (err: Error) => {
+        reject(err);
+      });
+    });
+
+    if (imageCount === 0) {
+      // Delete empty PDF
+      if (fs.existsSync(pdfPath)) {
+        fs.unlinkSync(pdfPath);
+      }
+      return errorResponse(
+        res,
+        404,
+        "No valid image files found to create PDF",
+        null
+      );
+    }
+
+    // Save PDF path to userfiles column
+    const relativePath = `order-pdfs/order-${id}-materials.pdf`;
+    await db
+      .update(orders)
+      .set({ userfiles: relativePath })
+      .where(eq(orders.id, +id));
+
+    // Return PDF
+    return res.download(pdfPath, `order-${id}-materials.pdf`, (err) => {
+      if (err) {
+        console.error("Error downloading PDF:", err);
+        return errorResponse(res, 500, "Error in file download", err);
+      }
+    });
+  } catch (error) {
+    console.error("Error generating material files PDF:", error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const addOrderToDesigner = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { designerId } = req.body;
+    const user = (req as any).user;
+
+    // Check if user is admin
+    if (user.role !== "admin") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to perform this action",
+        null
+      );
+    }
+
+    // Validate designerId
+    if (!designerId) {
+      return errorResponse(res, 400, "Designer ID is required", null);
+    }
+
+    // Check if order exists
+    const [order] = await db.select().from(orders).where(eq(orders.id, +id));
+
+    if (!order) {
+      return errorResponse(res, 404, "Order not found", null);
+    }
+
+    // Check if designer exists
+    const [designer] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, +designerId));
+
+    if (!designer) {
+      return errorResponse(res, 404, "Designer not found", null);
+    }
+
+    // Check if designer is not deleted
+    if (designer.isDeleted === 0) {
+      return errorResponse(res, 400, "Designer is deleted", null);
+    }
+
+    // Assign order to designer
+    const [updatedOrder] = await db
+      .update(orders)
+      .set({ designer_id: +designerId, status: "design" })
+      .where(eq(orders.id, +id))
+      .returning();
+
+    return successResponse(
+      res,
+      200,
+      {
+        order: updatedOrder,
+        designer: {
+          id: designer.id,
+          name: designer.name,
+          lastName: designer.lastName,
+          email: designer.email,
+        },
+      },
+      "Order assigned to designer successfully"
+    );
+  } catch (error) {
+    console.error("Error assigning order to designer:", error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const orderlistdesinger = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(orders)
+      .leftJoin(users, eq(users.id, orders.designer_id));
+
+    /* ------------------ ORDERS LIST ------------------ */
+    const ordersList = await db
+      .select({
+        id: orders.id,
+        title: orders.title,
+        file: orders.file,
+        adminFile: orders.adminFile,
+        createdAt: orders.createdAt,
+        updatedAt: orders.updatedAt,
+      })
+      .from(orders)
+      .leftJoin(payment, eq(payment.order_id, orders.id))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
+
+    if (!ordersList.length) {
+      return successResponse(
+        res,
+        200,
+        {
+          items: [],
+          pagination: {
+            page: 1,
+            limit,
+            total: 0,
+            totalPages: 1,
+          },
+        },
+        "Orders fetched successfully"
+      );
+    }
+
+    /* ------------------ CATEGORIES ------------------ */
+    const ordersWithCategories = await Promise.all(
+      ordersList.map(async (order) => {
+        const teethRelations = await db
+          .select()
+          .from(orderTeeth)
+          .where(eq(orderTeeth.orderId, order.id));
+
+        const teethIds = teethRelations.map((t) => t.toothId);
+
+        if (!teethIds.length) {
+          return { ...order, categories: [] };
+        }
+
+        const teethCategories = await db
+          .select({
+            tooth : tooth.toothnumber,
+            categoryId: tooth.category,
+            categoryName: category.title,
+            device: {
+              title : device.title
+            },
+            materialshade: {
+              title : materialshade.title,
+            },
+            volume : tooth.volume
+          })
+          .from(tooth)
+          .leftJoin(category, eq(tooth.category, category.id))
+          .leftJoin(device, eq(tooth.device, device.id))
+          .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+          .where(inArray(tooth.id, teethIds));  
+ 
+        const uniqueCategories = teethCategories.reduce<
+          { categoryId: number | null; categoryName: string | null }[]
+        >((acc, c) => {
+          if (!acc.find((x) => x.categoryId === c.categoryId)) {
+            acc.push(c);
+          }
+          return acc;
+        }, []);
+
+        return {
+          ...order,
+          teeth: uniqueCategories,
+        };
+      })
+    );
+
+    return successResponse(
+      res,
+      200,
+      {
+        items: ordersWithCategories,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "list fetched successfully"
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);

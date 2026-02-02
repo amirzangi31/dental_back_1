@@ -86,6 +86,7 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
         category_title: category.title,
         category_price: category.price,
         category_file: category.file,
+        category_description: category.description,
         category_color: {
           id: color.id,
           color: color.code,
@@ -114,6 +115,7 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
           price: row.category_price,
           file: row.category_file,
           color: row.category_color,
+          description: row.category_description,
         });
       }
     }

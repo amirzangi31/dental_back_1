@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { vip } from "../../../db/schema/vip";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { desc, asc,   eq, count } from "drizzle-orm";
+import { desc, asc, eq, count } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
 
 export const getVip = async (req: Request, res: Response) => {
@@ -16,6 +16,8 @@ export const getVip = async (req: Request, res: Response) => {
         id: vip.id,
         price: vip.price,
         description: vip.description,
+        startTime: vip.startTime,
+        endTime: vip.endTime,
       })
       .from(vip)
       .orderBy(orderByClause)
@@ -48,6 +50,8 @@ export const getVipById = async (req: Request, res: Response) => {
         id: vip.id,
         price: vip.price,
         description: vip.description,
+        startTime: vip.startTime,
+        endTime: vip.endTime,
       })
       .from(vip)
       .where(eq(vip.id, Number(id)))
@@ -65,10 +69,10 @@ export const getVipById = async (req: Request, res: Response) => {
 
 export const createVip = async (req: Request, res: Response) => {
   try {
-    const { price, description } = req.body;
+    const { price, description, startTime, endTime } = req.body;
     const [createdVip] = await db
       .insert(vip)
-      .values({ price, description })
+      .values({ price, description, startTime, endTime })
       .returning();
     return successResponse(res, 201, createdVip, "VIP created successfully");
   } catch (error) {

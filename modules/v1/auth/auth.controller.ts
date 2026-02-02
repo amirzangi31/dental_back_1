@@ -1104,6 +1104,45 @@ export const getDesigners = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
+export const getDesignersDropdown = async (req: Request, res: Response) => {
+  try {
+    const { limit, offset, sort } = getPagination(req);
+    const orderByClause =
+      sort === "asc" ? asc(users.createdAt) : desc(users.createdAt);
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(users)
+      .where(eq(users.role, "designer"));
+    const designers = await db
+      .select({
+        id: users.id,
+        name: users.name,
+        lastName: users.lastName,
+      })
+      .from(users)
+      .where(and(eq(users.role, "designer"), eq(users.isDeleted, 1)))
+      .orderBy(orderByClause)
+      .limit(limit)
+      .offset(offset);
+    return successResponse(
+      res,
+      200,
+      {
+        items: designers,
+        pagination: {
+          page: Math.floor(offset / limit) + 1,
+          limit,
+          total,
+          totalPages: Math.max(Math.ceil(total / limit), 1),
+        },
+      },
+      "Designers fetched successfully"
+    );
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
 export const getByIdDesigner = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
