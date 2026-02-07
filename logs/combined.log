@@ -5820,3 +5820,11 @@
 2026-02-07T16:17:25.445Z [INFO]: GET /api/auth/user/
 2026-02-07T16:17:25.452Z [INFO]: GET /api/order/orderlistadmin
 2026-02-07T16:17:25.459Z [INFO]: GET /api/auth/designers/dropdown
+2026-02-07T16:18:52.646Z [INFO]: GET /null
+2026-02-07T16:18:52.669Z [WARN]: 404 Path Not Found: GET /null
+2026-02-07T16:18:54.393Z [INFO]: GET /favicon.ico
+2026-02-07T16:18:54.398Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-02-07T16:18:55.695Z [INFO]: GET /order-files/order-8-materials-1770480780183-625972006.pdf
+2026-02-07T16:18:55.700Z [WARN]: 404 Path Not Found: GET /order-files/order-8-materials-1770480780183-625972006.pdf
+2026-02-07T16:19:01.950Z [INFO]: OPTIONS /api/order/order/19/material-files-pdf
+2026-02-07T16:19:01.955Z [INFO]: GET /api/order/order/19/material-files-pdf
