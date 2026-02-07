@@ -83,11 +83,11 @@ export const processOrderFormData = (
     try {
       let orderData: any = {};
 
-      if (req.body.orderData) {
+      if (req.body && req.body.orderData) {
         orderData = typeof req.body.orderData === 'string' 
           ? JSON.parse(req.body.orderData) 
           : req.body.orderData;
-      } else {
+      } else if (req.body && typeof req.body === 'object') {
         const bodyKeys = Object.keys(req.body);
         if (bodyKeys.length > 0) {
           const firstKey = bodyKeys[0];
@@ -144,9 +144,13 @@ export const processOrderFormData = (
         if (rootFile) {
           // فایل اصلی سفارش همچنان به صورت مسیر ذخیره می‌شود
           orderData.file = rootFile.path;
-        } else if (orderData.file === undefined || 
-                   (typeof orderData.file === 'object' && Object.keys(orderData.file).length === 0)) {
-          orderData.file = null;
+        } else if (orderData.file === undefined || orderData.file === null ||
+                   (typeof orderData.file === 'object' && orderData.file && Object.keys(orderData.file).length === 0)) {
+          // اگر فایل جدید نیامده، مقدار فعلی را حفظ کن (برای createOrderWithRefrence)
+          // فقط اگر واقعاً undefined یا object خالی بود null کن
+          if (orderData.file === undefined || (typeof orderData.file === 'object' && orderData.file && Object.keys(orderData.file).length === 0)) {
+            orderData.file = null;
+          }
         }
 
         if (orderData.teeth && Array.isArray(orderData.teeth)) {
@@ -170,7 +174,7 @@ export const processOrderFormData = (
                           filesMap.get(fieldName3);
 
                 if (!file && material.file !== null && material.file !== undefined) {
-                  if (typeof material.file === 'object' && Object.keys(material.file).length === 0) {
+                  if (typeof material.file === 'object' && material.file && Object.keys(material.file).length === 0) {
                     if (fileIndex < materialsFiles.length) {
                       file = materialsFiles[fileIndex];
                       fileIndex++;
@@ -194,17 +198,20 @@ export const processOrderFormData = (
                     .returning();
 
                   material.file = fileRecord.id;
-                } else if (material.file === null || material.file === undefined || 
-                          (typeof material.file === 'object' && Object.keys(material.file).length === 0)) {
+                } else if (material.file === undefined || 
+                          (typeof material.file === 'object' && material.file && Object.keys(material.file).length === 0)) {
+                  // فقط اگر undefined یا object خالی بود null کن
+                  // اگر عدد (file id قبلی) بود، حفظش کن
                   material.file = null;
                 }
+                // اگر material.file یک عدد (file id) باشد، همان را حفظ می‌کنیم
               }
             }
           }
         }
       } else {
         if (orderData.file === undefined || 
-            (typeof orderData.file === 'object' && Object.keys(orderData.file).length === 0)) {
+            (typeof orderData.file === 'object' && orderData.file && Object.keys(orderData.file).length === 0)) {
           orderData.file = null;
         }
         
@@ -213,11 +220,12 @@ export const processOrderFormData = (
             if (tooth.materials && Array.isArray(tooth.materials)) {
               tooth.materials.forEach((material: any) => {
                 // اگر file یک object خالی است ({} که نشان می‌دهد فایل باید ارسال می‌شد)
-                if (typeof material.file === 'object' && Object.keys(material.file).length === 0) {
+                if (typeof material.file === 'object' && material.file && Object.keys(material.file).length === 0) {
                   material.file = null;
                 } else if (material.file === undefined) {
                   material.file = null;
                 }
+                // اگر material.file یک عدد (file id) باشد، همان را حفظ می‌کنیم
               });
             }
           });

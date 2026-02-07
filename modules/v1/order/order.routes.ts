@@ -3,6 +3,7 @@ import { auth } from "../../../middleware/auth";
 import {
   changeOrderStatus,
   createOrder,
+  createOrderWithRefrence,
   getOrderWithId,
   orderDropDown,
   orderList,
@@ -24,6 +25,7 @@ import { isAdmin } from "../../../middleware/isAdmin";
 const router = express.Router();
 
 router.post("/order", auth, processOrderFormData, createOrder);
+router.post("/order/:id/with-reference", auth, processOrderFormData, createOrderWithRefrence);
 router.post("/calculateOrderPrice", calculateOrderPrice);
 router.get("/order/:id/material-files-pdf", auth, generateMaterialFilesPDF);
 router.get("/order/:id", auth, getOrderWithId);

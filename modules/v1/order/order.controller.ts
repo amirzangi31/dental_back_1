@@ -45,11 +45,12 @@ export const createOrder = async (req: Request, res: Response) => {
         res,
         400,
         "At least one tooth must be selected",
-        null
+        null,
       );
 
     // ---------- create teeth values & compute prices ----------
     let totalPrice = 0;
+    let hasMissingPrice = false;
     const teethValues = teeth.map((t: any) => {
       const materialsData =
         t.materials && Array.isArray(t.materials)
@@ -89,7 +90,11 @@ export const createOrder = async (req: Request, res: Response) => {
           categoryItem.price !== "0.00"
         ) {
           toothPrice += Number(categoryItem.price);
+        } else {
+          hasMissingPrice = true;
         }
+      } else {
+        hasMissingPrice = true;
       }
 
       // Materials price
@@ -108,6 +113,8 @@ export const createOrder = async (req: Request, res: Response) => {
               materialItem.price !== "0.00"
             ) {
               toothPrice += Number(materialItem.price);
+            } else {
+              hasMissingPrice = true;
             }
           }
         }
@@ -125,10 +132,13 @@ export const createOrder = async (req: Request, res: Response) => {
 
     // Calculate final total: subtotal + VIP + Tax
     const isVip = vipParametr === "true" || vipParametr === true;
-    const vipAmount = isVip ? vipPrice : 0;
+    if (hasMissingPrice) {
+      totalPrice = 0;
+    }
+    const vipAmount = isVip && !hasMissingPrice ? vipPrice : 0;
     const totalBeforeTax = totalPrice + vipAmount;
-    const taxAmount = (totalBeforeTax * taxPercent) / 100;
-    const finalTotal = totalBeforeTax + taxAmount;
+    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
+    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
 
     // ---------- create order ----------
     const [createdOrder]: any = await db
@@ -187,12 +197,589 @@ export const createOrder = async (req: Request, res: Response) => {
       .leftJoin(color, eq(category.color, color.id))
       .where(inArray(tooth.id, teethIds));
 
-    // Calculate price for each tooth: category + materials (without volume)
     const finalTeeth = await Promise.all(
       detailedTeeth.map(async (t) => {
         let toothTotalPrice = Number(t.categoryPrice ?? 0);
 
-        // Add materials price
+        if (t.materials && Array.isArray(t.materials)) {
+          for (const mat of t.materials) {
+            if (mat.material) {
+              const [materialItem] = await db
+                .select({ price: material.price })
+                .from(material)
+                .where(eq(material.id, mat.material))
+                .limit(1);
+
+              if (
+                materialItem &&
+                materialItem.price &&
+                materialItem.price !== "0.00"
+              ) {
+                toothTotalPrice += Number(materialItem.price);
+              }else if(materialItem.price === "0.00") {
+                toothTotalPrice = 0;
+                break;
+              }
+            }
+          }
+        }
+
+        return {
+          ...t,
+          price: toothTotalPrice,
+        };
+      }),
+    );
+
+    const [createdPayment] = await db
+      .insert(payment)
+      .values({
+        order_id: createdOrder.id,
+        type: "uploadfile",
+        status: "pending",
+      })
+      .returning();
+
+    return successResponse(
+      res,
+      200,
+      {
+        order: createdOrder,
+        teeth: finalTeeth,
+        teethIds,
+        payment: createdPayment,
+        vip: vipPrice || 0,
+      },
+      "Order created successfully",
+    );
+  } catch (error) {
+    console.error("Error creating order:", error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const getOrderWithId = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user = (req as any).user;
+    const [order] = await db.select().from(orders).where(eq(orders.id, +id));
+
+    if (!order) {
+      return errorResponse(res, 404, "Order not found", null);
+    }
+    if (order.user_id !== user.userId && user.role !== "admin") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to access this order",
+        null,
+      );
+    }
+
+    const teethRelations = await db
+      .select()
+      .from(orderTeeth)
+      .where(eq(orderTeeth.orderId, order.id));
+
+    if (teethRelations.length === 0) {
+      return errorResponse(res, 404, "Teeth not found", null);
+    }
+
+    const teethIds = teethRelations.map((t) => t.toothId);
+
+    const teethData = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        category: tooth.category,
+        categoryName: category.title,
+        categoryPrice: category.price,
+        device: tooth.device,
+        materialshade: tooth.materialshade,
+        volume: tooth.volume,
+        colorCode: color.code,
+        color: color.id,
+        materials: tooth.materials,
+      })
+      .from(tooth)
+      .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(color, eq(category.color, color.id))
+      .where(inArray(tooth.id, teethIds));
+
+    // دریافت Tax و VIP
+    const [taxItem] = await db.select().from(tax);
+    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
+
+    const [vipItem] = await db.select().from(vip);
+    const vipPrice = vipItem ? Number(vipItem.price || 0) : 0;
+
+    // ساخت خروجی مشابه ToothType interface
+    const teethDetails: any[] = [];
+    let hasMissingPrice = false;
+    let subtotal = 0;
+
+    for (const toothData of teethData) {
+      // محاسبه قیمت دندان
+      let categoryPriceNum = 0;
+      let materialsTotal = 0;
+      let toothHasMissingPrice = false;
+
+      if (toothData.categoryPrice && toothData.categoryPrice !== "0.00") {
+        categoryPriceNum = Number(toothData.categoryPrice);
+      } else {
+        toothHasMissingPrice = true;
+        hasMissingPrice = true;
+      }
+
+      // Get materials با جزئیات
+      const materialsArray: any[] = [];
+      if (toothData.materials && Array.isArray(toothData.materials)) {
+        for (const mat of toothData.materials) {
+          if (mat.material) {
+            const [materialItem] = await db
+              .select()
+              .from(material)
+              .where(eq(material.id, mat.material));
+
+            if (materialItem) {
+              const materialPrice =
+                materialItem.price !== "0.00"
+                  ? Number(materialItem.price)
+                  : null;
+
+              // دریافت مسیر فایل اگر وجود داشته باشد
+              let filePath = null;
+              if (mat.file) {
+                const [fileRecord] = await db
+                  .select({ path: files.path })
+                  .from(files)
+                  .where(eq(files.id, mat.file));
+                if (fileRecord) {
+                  filePath = fileRecord.path;
+                }
+              }
+
+              materialsArray.push({
+                id: materialItem.id,
+                title: materialItem.title,
+                price: materialPrice,
+                file: filePath,
+                text: mat.text || null,
+              });
+
+              if (materialPrice !== null) {
+                materialsTotal += materialPrice;
+              } else {
+                toothHasMissingPrice = true;
+                hasMissingPrice = true;
+              }
+            } else {
+              toothHasMissingPrice = true;
+              hasMissingPrice = true;
+            }
+          }
+        }
+      }
+
+      const toothTotal = !toothHasMissingPrice
+        ? categoryPriceNum + materialsTotal
+        : 0;
+      if (!toothHasMissingPrice) {
+        subtotal += toothTotal;
+      }
+
+      const toothDetail: any = {
+        id: toothData.id,
+        toothnumber: toothData.toothnumber,
+        category: toothData.category,
+        categoryDetail: toothData.category
+          ? {
+              id: toothData.category,
+              title: toothData.categoryName,
+              color: toothData.colorCode,
+              price: toothData.categoryPrice
+                ? Number(toothData.categoryPrice)
+                : null,
+            }
+          : null,
+        categoryName: toothData.categoryName,
+        categoryPrice: categoryPriceNum,
+        device: toothData.device,
+        devicePrice: null,
+        materialshade: toothData.materialshade,
+        materials: materialsArray,
+        materialsTotal: materialsTotal,
+        toothTotal: toothTotal,
+        volume: toothData.volume || [],
+        colorCode: toothData.colorCode,
+        color: toothData.color,
+        price: toothTotal,
+        order: teethRelations.find((ot) => ot.toothId === toothData.id),
+        hasMissingPrice: toothHasMissingPrice,
+      };
+
+      teethDetails.push(toothDetail);
+    }
+
+    // محاسبه summary
+    const isVip = order.vip === true;
+    const finalSubtotal = hasMissingPrice ? 0 : subtotal;
+    const vipAmount = !hasMissingPrice && isVip ? vipPrice : 0;
+    const totalBeforeTax = finalSubtotal + vipAmount;
+    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
+    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
+
+    return successResponse(
+      res,
+      200,
+      {
+        order: order,
+        teeth: teethDetails,
+        summary: {
+          subtotal: finalSubtotal,
+          vip: vipAmount,
+          taxPercent: taxPercent,
+          taxAmount: taxAmount,
+          total: finalTotal,
+          hasMissingPrice: hasMissingPrice,
+          vipInfo: vipItem
+            ? {
+                price: vipItem.price,
+                des: vipItem.description,
+                startTime: vipItem.startTime,
+                endTime: vipItem.endTime,
+              }
+            : null,
+        },
+      },
+      "Order fetched successfully",
+    );
+  } catch (error) {
+    console.error("Error fetching order:", error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const createOrderWithRefrence = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const { id } = req.params;
+
+    const [originalOrder] = await db
+      .select()
+      .from(orders)
+      .where(eq(orders.id, +id));
+
+    if (!originalOrder) {
+      return errorResponse(res, 404, "Order not found", null);
+    }
+
+    if (originalOrder.user_id !== user.userId && user.role !== "admin") {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to access this order",
+        null,
+      );
+    }
+
+    const originalOrderTeeth = await db
+      .select()
+      .from(orderTeeth)
+      .where(eq(orderTeeth.orderId, +id));
+
+    if (originalOrderTeeth.length === 0) {
+      return errorResponse(res, 404, "No teeth found for this order", null);
+    }
+
+    const originalTeethIds = originalOrderTeeth.map((t) => t.toothId);
+
+    const originalTeethData = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        category: tooth.category,
+        device: tooth.device,
+        materialshade: tooth.materialshade,
+        materials: tooth.materials,
+        volume: tooth.volume,
+      })
+      .from(tooth)
+      .where(inArray(tooth.id, originalTeethIds));
+
+    const {
+      title,
+      patientname,
+      patientage,
+      patientgender,
+      comment,
+      file,
+      discount,
+      vip: vipParametr,
+      teeth,
+    } = req.body;
+
+    if (!teeth || !Array.isArray(teeth) || teeth.length === 0) {
+      return errorResponse(
+        res,
+        400,
+        "At least one tooth must be selected",
+        null,
+      );
+    }
+
+    if (teeth.length !== originalTeethData.length) {
+      return errorResponse(
+        res,
+        400,
+        "تعداد دندان‌ها باید با order اصلی یکسان باشد",
+        null,
+      );
+    }
+
+    // ---------- بررسی category و toothnumber ----------
+    const originalCategories = originalTeethData.map((t) => ({
+      toothnumber: t.toothnumber,
+      category: t.category,
+    }));
+
+    const newCategories = teeth.map((t: any) => ({
+      toothnumber: +t.toothnumber || null,
+      category: +t.category || null,
+    }));
+
+    // مقایسه category ها
+    const originalCategoriesSorted = [...originalCategories].sort((a, b) => {
+      const toothCompare = (a.toothnumber || 0) - (b.toothnumber || 0);
+      if (toothCompare !== 0) return toothCompare;
+      return (a.category || 0) - (b.category || 0);
+    });
+
+    const newCategoriesSorted = [...newCategories].sort((a, b) => {
+      const toothCompare = (a.toothnumber || 0) - (b.toothnumber || 0);
+      if (toothCompare !== 0) return toothCompare;
+      return (a.category || 0) - (b.category || 0);
+    });
+
+    const categoriesMatch =
+      JSON.stringify(originalCategoriesSorted) ===
+      JSON.stringify(newCategoriesSorted);
+
+    if (!categoriesMatch) {
+      return errorResponse(
+        res,
+        400,
+        "category یا دندان‌ها با order اصلی مطابقت ندارند",
+        null,
+      );
+    }
+
+    // ---------- ایجاد teeth values و محاسبه قیمت ----------
+    let totalPrice = 0;
+    const teethValues = teeth.map((t: any, index: number) => {
+      // پیدا کردن دندان متناظر از order اصلی بر اساس toothnumber و category
+      const originalTooth = originalTeethData.find(
+        (ot) =>
+          ot.toothnumber === (+t.toothnumber || null) &&
+          ot.category === (+t.category || null),
+      );
+      const originalMaterials = (originalTooth?.materials as any[]) || [];
+
+      // ساخت materials: ترکیب داده‌های جدید با قدیمی
+      let materialsData: any[] = [];
+
+      // اگر materials جدید وجود دارد
+      if (t.materials && Array.isArray(t.materials) && t.materials.length > 0) {
+        materialsData = t.materials.map((mat: any, matIndex: number) => {
+          const originalMat = originalMaterials[matIndex] || {};
+
+          // file: اگر جدید ست شده استفاده کن، در غیر این صورت از قدیمی
+          let fileValue = mat.file;
+          const isFileEmpty =
+            fileValue === null ||
+            fileValue === undefined ||
+            fileValue === "" ||
+            (typeof fileValue === "object" &&
+              fileValue &&
+              Object.keys(fileValue).length === 0);
+          if (isFileEmpty) {
+            fileValue = originalMat.file || null;
+          }
+
+          // text: اگر جدید ست شده استفاده کن، در غیر این صورت از قدیمی
+          let textValue = mat.text;
+          if (
+            textValue === null ||
+            textValue === undefined ||
+            textValue === ""
+          ) {
+            textValue = originalMat.text || null;
+          }
+
+          // material: اگر جدید ست شده استفاده کن، در غیر این صورت از قدیمی
+          let materialValue = mat.material;
+          if (materialValue === null || materialValue === undefined) {
+            materialValue = originalMat.material || null;
+          }
+
+          return {
+            material: materialValue,
+            file: fileValue,
+            text: textValue,
+          };
+        });
+      } else {
+        // materials جدید خالی است، کامل از order اصلی کپی کن
+        materialsData = originalMaterials.map((mat: any) => ({
+          material: mat.material || null,
+          file: mat.file || null,
+          text: mat.text || null,
+        }));
+      }
+
+      // device و materialshade: اگر جدید نیامده از قدیمی استفاده کن
+      const deviceValue =
+        t.device !== undefined && t.device !== null
+          ? +t.device
+          : originalTooth?.device || null;
+      const materialshadeValue =
+        t.materialshade !== undefined && t.materialshade !== null
+          ? +t.materialshade
+          : originalTooth?.materialshade || null;
+
+      return {
+        toothnumber: +t.toothnumber || null,
+        category: +t.category || null,
+        device: deviceValue,
+        materialshade: materialshadeValue,
+        materials: materialsData,
+        volume: t.volume || originalTooth?.volume || [],
+      };
+    });
+
+    for (let i = 0; i < teeth.length; i++) {
+      const t = teeth[i];
+      let toothPrice = 0;
+
+      // Category price
+      if (t.category) {
+        const [categoryItem] = await db
+          .select({ price: category.price })
+          .from(category)
+          .where(eq(category.id, +t.category))
+          .limit(1);
+
+        if (
+          categoryItem &&
+          categoryItem.price &&
+          categoryItem.price !== "0.00"
+        ) {
+          toothPrice += Number(categoryItem.price);
+        }
+      }
+
+      if (t.materials && Array.isArray(t.materials)) {
+        for (const mat of t.materials) {
+          if (mat.material) {
+            const [materialItem] = await db
+              .select({ price: material.price })
+              .from(material)
+              .where(eq(material.id, mat.material))
+              .limit(1);
+
+            if (
+              materialItem &&
+              materialItem.price &&
+              materialItem.price !== "0.00"
+            ) {
+              toothPrice += Number(materialItem.price);
+            }
+          }
+        }
+      }
+
+      totalPrice += toothPrice;
+    }
+
+    const [taxItem] = await db.select().from(tax);
+    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
+
+    const [vipItem] = await db.select().from(vip);
+    const vipPrice = vipItem ? Number(vipItem.price || 0) : 0;
+
+    const halfPrice = totalPrice / 2;
+
+    const isVip = vipParametr === "true" || vipParametr === true;
+    const vipAmount = isVip ? vipPrice : 0;
+    const totalBeforeTax = halfPrice + vipAmount;
+    const taxAmount = (totalBeforeTax * taxPercent) / 100;
+    const finalTotal = totalBeforeTax + taxAmount;
+
+    const [createdOrder]: any = await db
+      .insert(orders)
+      .values({
+        title: title || originalOrder.title || null,
+        user_id: user.userId,
+        patientname: patientname || originalOrder.patientname || null,
+        patientage: patientage
+          ? parseInt(patientage, 10)
+          : originalOrder.patientage || null,
+        patientgender: patientgender || originalOrder.patientgender || null,
+        report: null,
+        status: "uploadfile" as OrderStatus,
+        totalaprice: String(finalTotal),
+        paymentstatus: false,
+        comment: comment || null,
+        // اگر فایل جدید نیامده، از فایل order اصلی استفاده کن
+        file: file || originalOrder.file || null,
+        discount: discount
+          ? parseInt(discount, 10)
+          : originalOrder.discount || null,
+        vip: vipParametr === "true" || vipParametr === true || false,
+        connections: originalOrder.connections || [],
+        antagonists: originalOrder.antagonists || [],
+        refrence: +id,
+      })
+      .returning();
+
+    const createdTeeth = await db.insert(tooth).values(teethValues).returning();
+
+    const orderTeethData = createdTeeth.map((t) => ({
+      orderId: createdOrder.id,
+      toothId: t.id,
+    }));
+    if (orderTeethData.length)
+      await db.insert(orderTeeth).values(orderTeethData);
+
+    const teethIds = createdTeeth.map((t) => t.id);
+
+    const detailedTeeth = await db
+      .select({
+        id: tooth.id,
+        toothnumber: tooth.toothnumber,
+        category: tooth.category,
+        categoryName: category.title,
+        categoryPrice: category.price,
+        device: tooth.device,
+        materialshade: tooth.materialshade,
+        materials: tooth.materials,
+        volume: tooth.volume,
+        colorCode: color.code,
+        color: color.id,
+      })
+      .from(tooth)
+      .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(color, eq(category.color, color.id))
+      .where(inArray(tooth.id, teethIds));
+
+    const finalTeeth = await Promise.all(
+      detailedTeeth.map(async (t) => {
+        let toothTotalPrice = Number(t.categoryPrice ?? 0);
+
         if (t.materials && Array.isArray(t.materials)) {
           for (const mat of t.materials) {
             if (mat.material) {
@@ -217,10 +804,9 @@ export const createOrder = async (req: Request, res: Response) => {
           ...t,
           price: toothTotalPrice,
         };
-      })
+      }),
     );
 
-    // ---------- create payment ----------
     const [createdPayment] = await db
       .insert(payment)
       .values({
@@ -239,108 +825,16 @@ export const createOrder = async (req: Request, res: Response) => {
         teethIds,
         payment: createdPayment,
         vip: vipPrice || 0,
+        originalOrderId: +id,
       },
-      "Order created successfully"
+      "Order created successfully with reference",
     );
   } catch (error) {
-    console.error("Error creating order:", error);
+    console.error("Error creating order with reference:", error);
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
 
-export const getOrderWithId = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const user = (req as any).user;
-    const order = await db.select().from(orders).where(eq(orders.id, +id));
-
-    if (order.length === 0) {
-      return errorResponse(res, 404, "Order not found", null);
-    }
-    if (order[0].user_id !== user.userId && user.role !== "admin") {
-      return errorResponse(
-        res,
-        403,
-        "You are not authorized to access this order",
-        null
-      );
-    }
-    const teeth = await db
-      .select()
-      .from(orderTeeth)
-      .where(eq(orderTeeth.orderId, order[0].id));
-    if (teeth.length === 0) {
-      return errorResponse(res, 404, "Teeth not found", null);
-    }
-
-    const teethIds = teeth.map((t) => t.toothId);
-
-    const teethData = await db
-      .select({
-        id: tooth.id,
-        toothnumber: tooth.toothnumber,
-        category: tooth.category,
-        categoryName: category.title,
-        categoryPrice: category.price,
-        device: tooth.device,
-        materialshade: tooth.materialshade,
-        volume: tooth.volume,
-        colorCode: color.code,
-        color: color.id,
-        materials: tooth.materials,
-      })
-      .from(tooth)
-      .leftJoin(category, eq(tooth.category, category.id))
-      .leftJoin(device, eq(tooth.device, device.id))
-      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
-      .leftJoin(color, eq(category.color, color.id))
-      .where(inArray(tooth.id, teethIds));
-
-    const teethDataWithOrder = teethData.map((t) => {
-      const volumeTotal = Array.isArray(t.volume)
-        ? t.volume.reduce((sum, v) => sum + +(v.price ?? 0), 0)
-        : 0;
-
-      const totalPrice = Number(t.categoryPrice ?? 0) + volumeTotal;
-      const materials = Array.isArray(t.materials)
-        ? t.materials.map(async (material: any) => {
-            const file = await db
-              .select({
-                path: files.path,
-              })
-              .from(files)
-              .where(eq(files.id, material.file));
-
-            return {
-              ...material,
-              file: file[0].path,
-            };
-          })
-        : [];
-      console.log(materials);
-      return {
-        ...t,
-        price: totalPrice,
-        order: teeth.find((ot) => ot.toothId === t.id),
-        materials,
-      };
-    });
-
-    const vipPrice = await db.select({ price: vip.price }).from(vip);
-    return successResponse(
-      res,
-      200,
-      {
-        order: order[0],
-        teeth: teethDataWithOrder,
-        vip: vipPrice[0]?.price || 0,
-      },
-      "Order fetched successfully"
-    );
-  } catch (error) {
-    return errorResponse(res, 500, "Internal server error", error);
-  }
-};
 export const updateOrder = async (req: Request, res: Response) => {
   try {
     const {
@@ -370,7 +864,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to update this order",
-        null
+        null,
       );
 
     if (!teeth || !Array.isArray(teeth) || teeth.length === 0)
@@ -378,7 +872,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         res,
         400,
         "At least one tooth must be selected",
-        null
+        null,
       );
 
     // ---------- remove old teeth ----------
@@ -485,7 +979,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         teethIds,
         vip: vipPrice ? vipPrice.price : 0,
       },
-      "Order updated successfully"
+      "Order updated successfully",
     );
   } catch (error) {
     console.error("Error updating order:", error);
@@ -519,7 +1013,7 @@ export const submitOrder = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to submit this order",
-        null
+        null,
       );
 
     if (order[0].paymentstatus)
@@ -603,7 +1097,7 @@ export const orderList = async (req: Request, res: Response) => {
         report: orders.report,
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,
-
+        refrence: orders.refrence,
         payment: {
           id: payment.id,
           status: payment.status,
@@ -632,7 +1126,7 @@ export const orderList = async (req: Request, res: Response) => {
             totalPages: 1,
           },
         },
-        "Orders fetched successfully"
+        "Orders fetched successfully",
       );
     }
 
@@ -672,7 +1166,7 @@ export const orderList = async (req: Request, res: Response) => {
           ...order,
           categories: uniqueCategories,
         };
-      })
+      }),
     );
 
     /* ------------------ RESPONSE ------------------ */
@@ -688,7 +1182,7 @@ export const orderList = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Orders fetched successfully"
+      "Orders fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -728,7 +1222,7 @@ export const orderDropDown = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Orders fetched successfully"
+      "Orders fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -744,7 +1238,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to access this resource",
-        null
+        null,
       );
     }
 
@@ -806,15 +1300,6 @@ export const orderListAdmin = async (req: Request, res: Response) => {
               .where(inArray(tooth.id, teethIds))
           : [];
 
-        const uniqueCategories = teethCategories.reduce<
-          { categoryId: number | null; categoryName: string | null }[]
-        >((acc, c) => {
-          if (!acc.find((x) => x.categoryId === c.categoryId)) {
-            acc.push(c);
-          }
-          return acc;
-        }, []);
-
         const paymentItem = await db
           .select({
             id: payment.id,
@@ -832,10 +1317,10 @@ export const orderListAdmin = async (req: Request, res: Response) => {
 
         return {
           ...order,
-          categories: uniqueCategories,
+          categories: teethCategories,
           payment: paymentItem[0] || null,
         };
-      })
+      }),
     );
 
     /* ------------------ RESPONSE ------------------ */
@@ -851,7 +1336,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Orders fetched successfully"
+      "Orders fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -867,7 +1352,7 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to access this resource",
-        null
+        null,
       );
     }
     const file = req.file;
@@ -895,26 +1380,55 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       return errorResponse(res, 404, "VIP price not found", null);
     }
 
+    const [currentOrder] = await db
+      .select({ adminFile: orders.adminFile })
+      .from(orders)
+      .where(eq(orders.id, +orderId))
+      .limit(1);
+
+    const adminFileValue = file ? file.path : (currentOrder?.adminFile || null);
+
     await db
       .update(orders)
       .set({
         status: status as OrderStatus,
-        adminFile: file ? file.path : null,
+        adminFile: adminFileValue,
         totalaprice: String(Number(totalPrice) + Number(vipPrice[0]?.price)),
+        paymentstatus: status !== "uploadfile" ? true : false,
       })
       .where(eq(orders.id, +orderId));
+
+    if (status !== "uploadfile") {
+      await db
+        .update(payment)
+        .set({
+          status: "paid",
+          updatedAt: new Date(),
+        })
+        .where(eq(payment.order_id, +orderId));
+    } else if (status === "uploadfile") {
+      await db
+        .update(payment)
+        .set({
+          status: "pending",
+          updatedAt: new Date(),
+        })
+        .where(eq(payment.order_id, +orderId));
+    }
+
     return successResponse(
       res,
       200,
       {
         order: orderId,
       },
-      "Order status changed successfully"
+      "Order status changed successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
+
 export const uploadDesignerFile = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
@@ -924,7 +1438,7 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to access this resource",
-        null
+        null,
       );
     }
     const file = req.file;
@@ -961,7 +1475,7 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
       {
         order: orderId,
       },
-      "Send File successfully"
+      "Send File successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -971,6 +1485,7 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
 export const downloadAdminFile = async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id;
+    const { isConfirm } = req.query;
     const user = (req as any).user;
 
     const [order] = await db
@@ -987,7 +1502,7 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to download this file",
-        null
+        null,
       );
     }
 
@@ -996,16 +1511,19 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
         res,
         404,
         "Admin file not found for this order",
-        null
+        null,
       );
     }
-    await db
+    if(isConfirm === "1"){
+      await db
       .update(orders)
       .set({
         deliveryDate: new Date(),
         status: "finaldelivery" as OrderStatus,
       })
       .where(eq(orders.id, +orderId));
+    }
+
 
     const filePath = path.join(process.cwd(), order.adminFile);
 
@@ -1063,7 +1581,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
           .where(eq(category.id, toothData.category));
 
         if (categoryItem) {
-          toothDetail.category = {
+          toothDetail.categoryDetail = {
             id: categoryItem.id,
             title: categoryItem.title,
             color: categoryItem.color,
@@ -1156,7 +1674,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
             : null,
         },
       },
-      "Price calculated successfully"
+      "Price calculated successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -1183,7 +1701,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to access this order",
-        null
+        null,
       );
     }
 
@@ -1221,8 +1739,15 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       })
       .from(tooth)
       .where(inArray(tooth.id, teethIds));
-    // Extract all material file IDs + map meta (toothnumber, text) for each file
+
+    // Extract all material files - both IDs and direct paths
     const fileIds: number[] = [];
+    const directPathFiles: {
+      path: string;
+      toothnumber: number | null;
+      text: string | null;
+      originalname: string;
+    }[] = [];
     const fileMetaMap: Record<
       number,
       { toothnumber: number | null; text: string | null }
@@ -1231,48 +1756,60 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
     teethData.forEach((t) => {
       if (t.materials && Array.isArray(t.materials)) {
         t.materials.forEach((mat: any) => {
-          if (mat.file && typeof mat.file === "number") {
-            fileIds.push(mat.file);
-
-            if (!fileMetaMap[mat.file]) {
-              fileMetaMap[mat.file] = {
+          if (mat.file) {
+            // اگر file یک عدد است (id از جدول files)
+            if (typeof mat.file === "number") {
+              fileIds.push(mat.file);
+              if (!fileMetaMap[mat.file]) {
+                fileMetaMap[mat.file] = {
+                  toothnumber:
+                    typeof t.toothnumber === "number" ? t.toothnumber : null,
+                  text: mat.text ?? null,
+                };
+              }
+            }
+            // اگر file یک رشته است (مسیر مستقیم فایل)
+            else if (typeof mat.file === "string" && mat.file.length > 0) {
+              directPathFiles.push({
+                path: mat.file,
                 toothnumber:
                   typeof t.toothnumber === "number" ? t.toothnumber : null,
                 text: mat.text ?? null,
-              };
+                originalname: path.basename(mat.file),
+              });
             }
           }
         });
       }
     });
 
-    if (fileIds.length === 0) {
+    // اگر نه id و نه مسیر مستقیم وجود نداشت
+    if (fileIds.length === 0 && directPathFiles.length === 0) {
       return errorResponse(
         res,
         404,
         "No material files found for this order",
-        null
+        null,
       );
     }
 
-    // Get file paths from files table
-    const materialFiles = await db
-      .select({
-        id: files.id,
-        path: files.path,
-        originalname: files.originalname,
-        mimetype: files.mimetype,
-      })
-      .from(files)
-      .where(inArray(files.id, fileIds));
-
-    if (materialFiles.length === 0) {
-      return errorResponse(
-        res,
-        404,
-        "Material files not found in database",
-        null
-      );
+    // Get file paths from files table (برای فایل‌هایی که id دارند)
+    let materialFilesFromDB: {
+      id: number;
+      path: string;
+      originalname: string | null;
+      mimetype: string | null;
+    }[] = [];
+    if (fileIds.length > 0) {
+      materialFilesFromDB = await db
+        .select({
+          id: files.id,
+          path: files.path,
+          originalname: files.originalname,
+          mimetype: files.mimetype,
+        })
+        .from(files)
+        .where(inArray(files.id, fileIds));
     }
 
     // Create PDF directory if it doesn't exist
@@ -1292,7 +1829,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       process.cwd(),
       "assets",
       "fonts",
-      "IRANSansX-Medium.ttf"
+      "IRANSansX-Medium.ttf",
     );
     if (fs.existsSync(faFontPath)) {
       doc.registerFont("fa", faFontPath);
@@ -1305,28 +1842,35 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
 
     // Add images to PDF
     let imageCount = 0;
-    for (const file of materialFiles) {
-      const filePath = path.join(process.cwd(), file.path);
 
+    // Helper function to add image to PDF
+    const addImageToPDF = (
+      filePath: string,
+      meta: { toothnumber: number | null; text: string | null } | null,
+      originalname: string,
+      mimetype: string | null,
+    ) => {
       // Check if file exists
       if (!fs.existsSync(filePath)) {
         console.warn(`File not found: ${filePath}`);
-        continue;
+        return false;
       }
 
-      // Check if it's an image
-      if (file.mimetype && file.mimetype.startsWith("image/")) {
+      // Check if it's an image (by mimetype or extension)
+      const isImage =
+        mimetype?.startsWith("image/") ||
+        /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(filePath);
+
+      if (isImage) {
         try {
-          // Add image to PDF
+          // Add page break for subsequent images
           if (imageCount > 0) {
             doc.addPage();
           }
 
-          const meta = fileMetaMap[file.id];
           if (meta) {
             if (meta.toothnumber !== null && meta.toothnumber !== undefined) {
               doc.moveDown(0.5);
-
               doc.fontSize(16).text(`Tooth Number: ${meta.toothnumber}`, {
                 align: "center",
               });
@@ -1334,7 +1878,6 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
 
             if (meta.text) {
               doc.moveDown(0.5);
-
               doc.fontSize(12).text(`Description: ${meta.text}`, {
                 align: "center",
               });
@@ -1350,16 +1893,37 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
           });
 
           doc.moveDown();
-          doc.fontSize(10).text(file.originalname || `File ${file.id}`, {
+          doc.fontSize(10).text(originalname || path.basename(filePath), {
             align: "center",
           });
 
           imageCount++;
+          return true;
         } catch (imageError) {
           console.error(`Error adding image ${filePath}:`, imageError);
-          // Continue with next file
+          return false;
         }
       }
+      return false;
+    };
+
+    // 1. اضافه کردن فایل‌هایی که از دیتابیس آمده‌اند (با id)
+    for (const file of materialFilesFromDB) {
+      const filePath = path.join(process.cwd(), file.path);
+      const meta = fileMetaMap[file.id];
+      addImageToPDF(
+        filePath,
+        meta,
+        file.originalname || `File ${file.id}`,
+        file.mimetype,
+      );
+    }
+
+    // 2. اضافه کردن فایل‌هایی که مسیر مستقیم دارند
+    for (const file of directPathFiles) {
+      const filePath = path.join(process.cwd(), file.path);
+      const meta = { toothnumber: file.toothnumber, text: file.text };
+      addImageToPDF(filePath, meta, file.originalname, null);
     }
 
     // Finalize PDF
@@ -1384,7 +1948,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         res,
         404,
         "No valid image files found to create PDF",
-        null
+        null,
       );
     }
 
@@ -1420,7 +1984,7 @@ export const addOrderToDesigner = async (req: Request, res: Response) => {
         res,
         403,
         "You are not authorized to perform this action",
-        null
+        null,
       );
     }
 
@@ -1458,6 +2022,14 @@ export const addOrderToDesigner = async (req: Request, res: Response) => {
       .where(eq(orders.id, +id))
       .returning();
 
+    await db
+      .update(payment)
+      .set({
+        status: "paid",
+        updatedAt: new Date(),
+      })
+      .where(eq(payment.order_id, +id));
+
     return successResponse(
       res,
       200,
@@ -1470,7 +2042,7 @@ export const addOrderToDesigner = async (req: Request, res: Response) => {
           email: designer.email,
         },
       },
-      "Order assigned to designer successfully"
+      "Order assigned to designer successfully",
     );
   } catch (error) {
     console.error("Error assigning order to designer:", error);
@@ -1489,7 +2061,6 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
       .from(orders)
       .leftJoin(users, eq(users.id, orders.designer_id));
 
-    /* ------------------ ORDERS LIST ------------------ */
     const ordersList = await db
       .select({
         id: orders.id,
@@ -1501,6 +2072,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
       })
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
+      .where(eq(orders.designer_id, user.userId))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -1518,7 +2090,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
             totalPages: 1,
           },
         },
-        "Orders fetched successfully"
+        "Orders fetched successfully",
       );
     }
 
@@ -1538,37 +2110,28 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
 
         const teethCategories = await db
           .select({
-            tooth : tooth.toothnumber,
+            tooth: tooth.toothnumber,
             categoryId: tooth.category,
             categoryName: category.title,
             device: {
-              title : device.title
+              title: device.title,
             },
             materialshade: {
-              title : materialshade.title,
+              title: materialshade.title,
             },
-            volume : tooth.volume
+            volume: tooth.volume,
           })
           .from(tooth)
           .leftJoin(category, eq(tooth.category, category.id))
           .leftJoin(device, eq(tooth.device, device.id))
           .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
-          .where(inArray(tooth.id, teethIds));  
- 
-        const uniqueCategories = teethCategories.reduce<
-          { categoryId: number | null; categoryName: string | null }[]
-        >((acc, c) => {
-          if (!acc.find((x) => x.categoryId === c.categoryId)) {
-            acc.push(c);
-          }
-          return acc;
-        }, []);
+          .where(inArray(tooth.id, teethIds));
 
         return {
           ...order,
-          teeth: uniqueCategories,
+          teeth: teethCategories,
         };
-      })
+      }),
     );
 
     return successResponse(
@@ -1583,7 +2146,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "list fetched successfully"
+      "list fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);

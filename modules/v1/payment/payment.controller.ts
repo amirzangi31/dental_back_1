@@ -1,11 +1,15 @@
 import { Request, Response } from "express";
 import { db } from "../../../db";
 import { payment, PaymentStatus } from "../../../db/schema/payment";
-import { orders } from "../../../db/schema/orders";
+import { orders, orderTeeth } from "../../../db/schema/orders";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { tooth } from "../../../db/schema/tooth";
+import { category } from "../../../db/schema/category";
+import { device } from "../../../db/schema/device";
+import { materialshade } from "../../../db/schema/materialshade";
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
@@ -44,9 +48,14 @@ export const getPayments = async (req: Request, res: Response) => {
         updatedAt: payment.updatedAt,
         order: {
           id: orders.id,
+          title: orders.title,
+          file: orders.file,
+          adminFile: orders.adminFile,
           status: orders.status,
           paymentstatus: orders.paymentstatus,
           totalPrice: orders.totalaprice,
+          createdAt: orders.createdAt,
+          updatedAt: orders.updatedAt,
         },
       })
       .from(payment)
@@ -56,11 +65,56 @@ export const getPayments = async (req: Request, res: Response) => {
       .limit(limit)
       .offset(offset);
 
+    const paymentsWithOrderDetails = await Promise.all(
+      list.map(async (item) => {
+        if (!item.order?.id) {
+          return { ...item, order: { ...item.order, teeth: [] } };
+        }
+
+        const teethRelations = await db
+          .select()
+          .from(orderTeeth)
+          .where(eq(orderTeeth.orderId, item.order.id));
+
+        const teethIds = teethRelations.map((t) => t.toothId);
+        if (!teethIds.length) {
+          return { ...item, order: { ...item.order, teeth: [] } };
+        }
+
+        const teethCategories = await db
+          .select({
+            tooth: tooth.toothnumber,
+            categoryId: tooth.category,
+            categoryName: category.title,
+            device: {
+              title: device.title,
+            },
+            materialshade: {
+              title: materialshade.title,
+            },
+            volume: tooth.volume,
+          })
+          .from(tooth)
+          .leftJoin(category, eq(tooth.category, category.id))
+          .leftJoin(device, eq(tooth.device, device.id))
+          .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+          .where(inArray(tooth.id, teethIds));
+
+        return {
+          ...item,
+          order: {
+            ...item.order,
+            teeth: teethCategories,
+          },
+        };
+      })
+    );
+
     return successResponse(
       res,
       200,
       {
-        items: list,
+        items: paymentsWithOrderDetails,
         pagination: {
           page: Math.floor(offset / limit) + 1,
           limit,

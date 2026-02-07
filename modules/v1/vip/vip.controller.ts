@@ -35,7 +35,7 @@ export const getVip = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "VIP prices fetched successfully"
+      "VIP prices fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -83,11 +83,11 @@ export const createVip = async (req: Request, res: Response) => {
 export const updateVip = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { price, description } = req.body;
+    const { price, description, startTime, endTime } = req.body;
 
     const [updatedVip] = await db
       .update(vip)
-      .set({ price, description })
+      .set({ price, description, startTime, endTime })
       .where(eq(vip.id, Number(id)))
       .returning();
 
