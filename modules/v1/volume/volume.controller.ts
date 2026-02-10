@@ -50,7 +50,7 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
     const { category, sort } = req.params;
     const orderByClause =
       sort === "asc" ? asc(volume.createdAt) : desc(volume.createdAt);
-    const categoryNumber = parseInt(category);
+    const categoryNumber = +category;
     const volumeList = await db
       .select({
         id: volume.id,

@@ -183,6 +183,13 @@
       "when": 1767464719776,
       "tag": "0025_calm_ravenous",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1770709462804,
+      "tag": "0026_daily_switch",
+      "breakpoints": true
     }
   ]
 }
