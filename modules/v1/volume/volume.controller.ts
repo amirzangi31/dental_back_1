@@ -49,7 +49,7 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
     const { category, sort } = req.params;
     const orderByClause =
       sort === "asc" ? asc(volume.createdAt) : desc(volume.createdAt);
-    const categoryNumber = parseInt(category);
+    const categoryNumber = +category;
     const volumeList = await db
       .select({
         id: volume.id,
@@ -105,7 +105,7 @@ export const updateVolume = async (req: Request, res: Response) => {
     if (end) updateData.end = String(end);
     if (unit) updateData.unit = unit;
     if (defaultvalue) updateData.defaultvalue = String(defaultvalue);
-    if (category) updateData.category = parseInt(category);
+    if (category) updateData.category = +category;
     const volumeItem = await db
       .update(volume)
       .set(updateData)

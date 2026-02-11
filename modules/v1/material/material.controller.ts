@@ -175,8 +175,8 @@ export const getMaterialByCategory = async (req: Request, res: Response) => {
     const { category, sort } = req.params;
     const orderByClause =
       sort === "asc" ? asc(material.createdAt) : desc(material.createdAt);
-    const categoryNumber = parseInt(category);
-
+    const categoryNumber = +category;
+    
     if (isNaN(categoryNumber)) {
       return errorResponse(res, 400, "Invalid category ID", null);
     }

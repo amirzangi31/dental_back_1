@@ -1,5 +1,9 @@
 {
+<<<<<<< HEAD
   "id": "3dce9acb-7b9d-4ec8-a75a-a5e4bcd0f1c3",
+=======
+  "id": "387eee0a-38a3-46ae-aa92-3b3604ddb970",
+>>>>>>> 9a27e96ecafb3eef1ede13c4eea4f5dee58d740a
   "prevId": "786595df-f5be-472e-998c-1893d5382848",
   "version": "7",
   "dialect": "postgresql",
@@ -839,12 +843,15 @@
           "primaryKey": false,
           "notNull": false
         },
+<<<<<<< HEAD
         "refrence": {
           "name": "refrence",
           "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
+=======
+>>>>>>> 9a27e96ecafb3eef1ede13c4eea4f5dee58d740a
         "adminFile": {
           "name": "adminFile",
           "type": "text",
@@ -925,6 +932,7 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+<<<<<<< HEAD
         },
         "orders_refrence_orders_id_fk": {
           "name": "orders_refrence_orders_id_fk",
@@ -938,6 +946,8 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+=======
+>>>>>>> 9a27e96ecafb3eef1ede13c4eea4f5dee58d740a
         }
       },
       "compositePrimaryKeys": {},
