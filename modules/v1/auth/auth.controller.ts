@@ -39,7 +39,7 @@ export const sendemail = async (req: Request, res: Response) => {
       console.log("Email sending is not enabled. Code for", email, ":", otp);
     }
 
-    return successResponse(res, 200, { otp }, "email sent successfully");
+    return successResponse(res, 200, {  }, "email sent successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
   }

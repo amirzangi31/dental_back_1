@@ -1,1 +1,0 @@
-ALTER TABLE "payment" ADD COLUMN "description" text;

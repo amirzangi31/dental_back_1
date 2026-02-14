@@ -88,19 +88,21 @@ app.use(mongoSanitize());
 
 // XSS protection
 app.use(xss());
-
-// Helmet
 app.use(
   helmet({
+    // اگر برای CSP تنظیمات خاصی ندارید، همین true کافی است
     contentSecurityPolicy: true,
-    crossOriginEmbedderPolicy: true,
-    crossOriginOpenerPolicy: { policy: "same-origin" },
-    crossOriginResourcePolicy: { policy: "same-origin" },
+    // برای این‌که ریسورس‌ها (مثل عکس) از اوریجین دیگر قابل استفاده باشند،
+    // CORP را از same-origin به cross-origin تغییر می‌دهیم
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    // در صورت نیاز بعداً می‌توانید این دو مورد را هم بسته به نیازتان تنظیم/غیرفعال کنید
+    crossOriginEmbedderPolicy: false,
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   })
 );
 
 // CORS
-const allowedOrigins = ["http://localhost:3000" , "https://my.digitda.de"];
+const allowedOrigins = ["https://my.digitda.de"];
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -140,7 +142,17 @@ if (process.env.NODE_ENV !== "production") {
 ======================= */
 // Use process.cwd() for better compatibility with ts-node
 const uploadsPath = path.join(process.cwd(), "uploads");
-app.use("/uploads", express.static(uploadsPath));
+
+
+app.use(
+  "/uploads",
+  express.static(uploadsPath, {
+    setHeaders: (res) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Access-Control-Allow-Origin", "*"); // برای اطمینان
+    },
+  })
+);
 
 /* =======================
    ROUTES

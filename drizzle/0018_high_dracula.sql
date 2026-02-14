@@ -1,1 +1,0 @@
-ALTER TABLE "tooth" ADD COLUMN "materials" jsonb DEFAULT '[]'::jsonb;

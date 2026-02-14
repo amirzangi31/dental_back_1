@@ -1,87 +1,9 @@
 {
-  "id": "39c008b3-e2ba-4c1f-90bd-72cd96e8fb99",
+  "id": "2e2413eb-59bd-45fe-9454-934101699533",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.additionalscan": {
-      "name": "additionalscan",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "serial",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "title": {
-          "name": "title",
-          "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price": {
-          "name": "price",
-          "type": "numeric(10, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "color": {
-          "name": "color",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "file": {
-          "name": "file",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "isDeleted": {
-          "name": "isDeleted",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "createdAt": {
-          "name": "createdAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updatedAt": {
-          "name": "updatedAt",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "additionalscan_color_color_id_fk": {
-          "name": "additionalscan_color_color_id_fk",
-          "tableFrom": "additionalscan",
-          "tableTo": "color",
-          "columnsFrom": [
-            "color"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.catalog": {
       "name": "catalog",
       "schema": "",
@@ -371,12 +293,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "price": {
-          "name": "price",
-          "type": "numeric(10, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
         "isDeleted": {
           "name": "isDeleted",
           "type": "integer",
@@ -497,8 +413,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.implant": {
-      "name": "implant",
+    "public.material": {
+      "name": "material",
       "schema": "",
       "columns": {
         "id": {
@@ -525,9 +441,34 @@
           "primaryKey": false,
           "notNull": false
         },
+        "descriptionStatus": {
+          "name": "descriptionStatus",
+          "type": "descriptionstatus",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "file": {
           "name": "file",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "materialcategory": {
+          "name": "materialcategory",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category": {
+          "name": "category",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
@@ -562,9 +503,9 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "implant_color_color_id_fk": {
-          "name": "implant_color_color_id_fk",
-          "tableFrom": "implant",
+        "material_color_color_id_fk": {
+          "name": "material_color_color_id_fk",
+          "tableFrom": "material",
           "tableTo": "color",
           "columnsFrom": [
             "color"
@@ -575,10 +516,36 @@
           "onDelete": "no action",
           "onUpdate": "no action"
         },
-        "implant_parent_id_implant_id_fk": {
-          "name": "implant_parent_id_implant_id_fk",
-          "tableFrom": "implant",
-          "tableTo": "implant",
+        "material_materialcategory_materialcategory_id_fk": {
+          "name": "material_materialcategory_materialcategory_id_fk",
+          "tableFrom": "material",
+          "tableTo": "materialcategory",
+          "columnsFrom": [
+            "materialcategory"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "material_category_category_id_fk": {
+          "name": "material_category_category_id_fk",
+          "tableFrom": "material",
+          "tableTo": "category",
+          "columnsFrom": [
+            "category"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "material_parent_id_material_id_fk": {
+          "name": "material_parent_id_material_id_fk",
+          "tableFrom": "material",
+          "tableTo": "material",
           "columnsFrom": [
             "parent_id"
           ],
@@ -595,8 +562,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.implantattribute": {
-      "name": "implantattribute",
+    "public.materialcategory": {
+      "name": "materialcategory",
       "schema": "",
       "columns": {
         "id": {
@@ -608,24 +575,6 @@
         "title": {
           "name": "title",
           "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price": {
-          "name": "price",
-          "type": "numeric(10, 2)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "color": {
-          "name": "color",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "file": {
-          "name": "file",
-          "type": "text",
           "primaryKey": false,
           "notNull": false
         },
@@ -652,21 +601,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "implantattribute_color_color_id_fk": {
-          "name": "implantattribute_color_color_id_fk",
-          "tableFrom": "implantattribute",
-          "tableTo": "color",
-          "columnsFrom": [
-            "color"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -686,12 +621,6 @@
         "title": {
           "name": "title",
           "type": "varchar(255)",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "price": {
-          "name": "price",
-          "type": "numeric(10, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -834,6 +763,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "designer_id": {
+          "name": "designer_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "patientname": {
           "name": "patientname",
           "type": "varchar(255)",
@@ -873,12 +808,24 @@
           "notNull": false,
           "default": "'0.00'"
         },
+        "userfiles": {
+          "name": "userfiles",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "paymentstatus": {
           "name": "paymentstatus",
           "type": "boolean",
           "primaryKey": false,
           "notNull": false,
           "default": false
+        },
+        "antagonists": {
+          "name": "antagonists",
+          "type": "integer[]",
+          "primaryKey": false,
+          "notNull": false
         },
         "comment": {
           "name": "comment",
@@ -891,6 +838,13 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "refrence": {
+          "name": "refrence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": null
         },
         "adminFile": {
           "name": "adminFile",
@@ -906,13 +860,6 @@
         },
         "vip": {
           "name": "vip",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": false,
-          "default": false
-        },
-        "isDelivered": {
-          "name": "isDelivered",
           "type": "boolean",
           "primaryKey": false,
           "notNull": false,
@@ -966,6 +913,32 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "orders_designer_id_users_id_fk": {
+          "name": "orders_designer_id_users_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "users",
+          "columnsFrom": [
+            "designer_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "orders_refrence_orders_id_fk": {
+          "name": "orders_refrence_orders_id_fk",
+          "tableFrom": "orders",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "refrence"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -974,8 +947,8 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.support": {
-      "name": "support",
+    "public.payment": {
+      "name": "payment",
       "schema": "",
       "columns": {
         "id": {
@@ -987,6 +960,104 @@
         "order_id": {
           "name": "order_id",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "paymentStatus",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file": {
+          "name": "file",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "isAccepted": {
+          "name": "isAccepted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": false,
+          "default": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "type": {
+          "name": "type",
+          "type": "type",
+          "typeSchema": "public",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trackingCode": {
+          "name": "trackingCode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "payment_order_id_orders_id_fk": {
+          "name": "payment_order_id_orders_id_fk",
+          "tableFrom": "payment",
+          "tableTo": "orders",
+          "columnsFrom": [
+            "order_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.tax": {
+      "name": "tax",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "percent": {
+          "name": "percent",
+          "type": "numeric(10, 2)",
           "primaryKey": false,
           "notNull": false
         },
@@ -1013,21 +1084,7 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {
-        "support_order_id_orders_id_fk": {
-          "name": "support_order_id_orders_id_fk",
-          "tableFrom": "support",
-          "tableTo": "orders",
-          "columnsFrom": [
-            "order_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
+      "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1131,7 +1188,7 @@
           "name": "order_id",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "user_id": {
           "name": "user_id",
@@ -1139,9 +1196,9 @@
           "primaryKey": false,
           "notNull": true
         },
-        "status": {
-          "name": "status",
-          "type": "status",
+        "ticket_status": {
+          "name": "ticket_status",
+          "type": "ticketStatus",
           "typeSchema": "public",
           "primaryKey": false,
           "notNull": false
@@ -1236,17 +1293,12 @@
           "primaryKey": false,
           "notNull": false
         },
-        "implant": {
-          "name": "implant",
-          "type": "integer",
+        "materials": {
+          "name": "materials",
+          "type": "jsonb",
           "primaryKey": false,
-          "notNull": false
-        },
-        "additionalscan": {
-          "name": "additionalscan",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": false,
+          "default": "'[]'::jsonb"
         },
         "volume": {
           "name": "volume",
@@ -1317,32 +1369,6 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
-        },
-        "tooth_implant_implant_id_fk": {
-          "name": "tooth_implant_implant_id_fk",
-          "tableFrom": "tooth",
-          "tableTo": "implant",
-          "columnsFrom": [
-            "implant"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "tooth_additionalscan_additionalscan_id_fk": {
-          "name": "tooth_additionalscan_additionalscan_id_fk",
-          "tableFrom": "tooth",
-          "tableTo": "additionalscan",
-          "columnsFrom": [
-            "additionalscan"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -1395,7 +1421,13 @@
           "name": "password",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "googleId": {
+          "name": "googleId",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "createdAt": {
           "name": "createdAt",
@@ -1474,6 +1506,32 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "start_time": {
+          "name": "start_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "end_time": {
+          "name": "end_time",
+          "type": "time",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
         }
       },
       "indexes": {},
@@ -1518,9 +1576,15 @@
           "primaryKey": false,
           "notNull": false
         },
-        "price": {
-          "name": "price",
-          "type": "numeric(10, 2)",
+        "unit": {
+          "name": "unit",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "category": {
+          "name": "category",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
@@ -1547,7 +1611,21 @@
         }
       },
       "indexes": {},
-      "foreignKeys": {},
+      "foreignKeys": {
+        "volume_category_category_id_fk": {
+          "name": "volume_category_category_id_fk",
+          "tableFrom": "volume",
+          "tableTo": "category",
+          "columnsFrom": [
+            "category"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
@@ -1556,6 +1634,16 @@
     }
   },
   "enums": {
+    "public.descriptionstatus": {
+      "name": "descriptionstatus",
+      "schema": "public",
+      "values": [
+        "none",
+        "file",
+        "text",
+        "all"
+      ]
+    },
     "public.materialshadecategory": {
       "name": "materialshadecategory",
       "schema": "public",
@@ -1563,16 +1651,20 @@
         "A",
         "B",
         "C",
-        "D"
+        "D",
+        "M"
       ]
     },
     "public.status": {
       "name": "status",
       "schema": "public",
       "values": [
-        "open",
-        "pending",
-        "close"
+        "uploadfile",
+        "check",
+        "design",
+        "approval",
+        "payment",
+        "finaldelivery"
       ]
     },
     "public.patientgender": {
@@ -1583,13 +1675,40 @@
         "female"
       ]
     },
+    "public.paymentStatus": {
+      "name": "paymentStatus",
+      "schema": "public",
+      "values": [
+        "pending",
+        "paid",
+        "failed"
+      ]
+    },
+    "public.type": {
+      "name": "type",
+      "schema": "public",
+      "values": [
+        "uploadfile",
+        "paypal"
+      ]
+    },
+    "public.ticketStatus": {
+      "name": "ticketStatus",
+      "schema": "public",
+      "values": [
+        "open",
+        "pending",
+        "close"
+      ]
+    },
     "public.role": {
       "name": "role",
       "schema": "public",
       "values": [
         "doctor",
         "admin",
-        "labrator"
+        "labrator",
+        "designer"
       ]
     }
   },

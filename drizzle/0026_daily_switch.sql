@@ -1,1 +1,0 @@
-ALTER TABLE "orders" ALTER COLUMN "totalaprice" SET DEFAULT '0.00';

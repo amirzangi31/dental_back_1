@@ -1,1 +1,0 @@
-ALTER TABLE "tickets" DROP COLUMN "is_answered";
