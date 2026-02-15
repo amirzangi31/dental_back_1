@@ -28,8 +28,40 @@ export const sendemail = async (req: Request, res: Response) => {
     const mailOptions = {
       from: process.env.GMAIL_USER || "zangiabadi1378888@gmail.com",
       to: email,
-      subject: "Otp For Denatal Art",
-      text: `Otp For Denatal Art: ${otp} 🤛🤛🤛`,
+      subject: "OTP For Dental Art",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; border-radius: 5px;">
+            <h2 style="color: #2c3e50; margin-top: 0;">Hello,</h2>
+            
+            <p>Thank you for registering with us.</p>
+            
+            <p>To complete your sign-up process, please use the verification code below:</p>
+            
+            <div style="background-color: #fff; border: 2px solid #3498db; border-radius: 5px; padding: 20px; text-align: center; margin: 20px 0;">
+              <h1 style="color: #3498db; font-size: 32px; letter-spacing: 5px; margin: 0;">${otp}</h1>
+            </div>
+            
+            <p style="color: #e74c3c; font-weight: bold;">This code is valid for a limited time.</p>
+            
+            <p style="color: #7f8c8d; font-size: 14px;">If you did not request this registration, please ignore this email.</p>
+            
+            <p>We look forward to working with you.</p>
+            
+            <p style="margin-top: 30px;">
+              Best regards,<br>
+              <strong>Digital Dental Design</strong>
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
     };
     await redis.set(`otp:${email}`, otp, "EX", 300);
 
@@ -39,7 +71,7 @@ export const sendemail = async (req: Request, res: Response) => {
       console.log("Email sending is not enabled. Code for", email, ":", otp);
     }
 
-    return successResponse(res, 200, {  }, "email sent successfully");
+    return successResponse(res, 200, {}, "email sent successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
   }
@@ -210,6 +242,52 @@ export const signup = async (req: Request, res: Response) => {
       email: user[0].email,
       role: user[0].role,
     });
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_PASS,
+      },
+    });
+    const mailOptions = {
+      from: process.env.GMAIL_USER || "zangiabadi1378888@gmail.com",
+      to: email,
+      subject: "Dental Art",
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #f4f4f4; padding: 20px; border-radius: 5px;">
+            <h2 style="color: #2c3e50; margin-top: 0;">Hello,</h2>
+            
+            <h3 style="color: #3498db;">Welcome to DigitDA.</h3>
+            
+            <p>Your account has been successfully created, and you are now part of a modern digital design experience built for precision, speed, and uncompromising quality.</p>
+            
+            <p>At DigitDA, every case is handled with advanced Dental Softwares expertise and attention to detail — because we believe digital dentistry should never be average.</p>
+            
+            <p>You can now log in, submit your cases, and experience a smarter workflow.</p>
+            
+            <p style="font-weight: bold; color: #27ae60;">We're excited to work with you.</p>
+            
+            <p style="margin-top: 30px;">
+              Best regards,<br>
+              <strong>Digital Dental Art</strong>
+            </p>
+          </div>
+        </body>
+        </html>
+      `,
+    };
+    if (typeof transporter !== "undefined") {
+      await transporter.sendMail(mailOptions);
+    } else {
+      console.log("",);
+    }
     return successResponse(
       res,
       200,
