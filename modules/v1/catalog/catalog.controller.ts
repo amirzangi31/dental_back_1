@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { catalog } from "../../../db/schema/catalog";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { category } from "../../../db/schema/category";
 import { color } from "../../../db/schema/color";
 import { getPagination } from "../../../utils/pagination";
@@ -97,7 +97,12 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       .from(catalog)
       .leftJoin(category, eq(catalog.id, category.catalog))
       .leftJoin(color, eq(category.color, color.id))
-      .where(eq(catalog.isDeleted, 0))
+      .where(
+        and(
+          eq(catalog.isDeleted, 0),
+          or(isNull(category.id), eq(category.isDeleted, 0))
+        )
+      )
       .orderBy(catalogOrderBy, categoryOrderBy)
       .limit(limit)
       .offset(offset);
