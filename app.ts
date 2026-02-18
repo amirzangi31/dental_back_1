@@ -102,7 +102,8 @@ app.use(
 );
 
 // CORS
-const allowedOrigins = ["https://my.digitda.de"];
+// const allowedOrigins = ["https://my.digitda.de"];
+const allowedOrigins = ["http://localhost:3000"];
 app.use(
   cors({
     origin: (origin, callback) => {
