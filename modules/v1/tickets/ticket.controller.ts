@@ -116,6 +116,7 @@ export const getTickets = async (req: Request, res: Response) => {
 export const getTicketById = async (req: Request, res: Response) => {
   try {
     const id = Number(req.params.id);
+    const user = (req as any).user;
 
     const ticketInfo = await db
       .select({
@@ -138,6 +139,11 @@ export const getTicketById = async (req: Request, res: Response) => {
 
     if (!ticketInfo.length)
       return errorResponse(res, 404, "Ticket not found", null);
+
+    // اگر کاربر admin نباشد، فقط تیکت‌های خودش را می‌تواند ببیند
+    if (user.role !== "admin" && ticketInfo[0].userId !== user.userId) {
+      return errorResponse(res, 403, "You are not authorized to view this ticket", null);
+    }
 
     const messages = await db
       .select({
