@@ -32,7 +32,7 @@ export const getTickets = async (req: Request, res: Response) => {
       })
       .from(tickets)
       .leftJoin(orders, eq(tickets.orderId, orders.id))
-      // .where(eq(tickets.userId, user.userId))
+      .where(eq(tickets.userId, user.userId))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -289,6 +289,11 @@ export const createTicketMessage = async (req: Request, res: Response) => {
           user_id: (req as any).user?.id || null,
         })
         .returning();
+    }
+
+    const ticket = await db.select().from(tickets).where(eq(tickets.userId , +user.userId))
+    if(!ticket[0]){
+      return errorResponse(res , 404 , "ticket is not found" , {})
     }
 
     const msg = await db

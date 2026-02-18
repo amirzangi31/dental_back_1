@@ -19,7 +19,7 @@ export const getCatalog = async (req: Request, res: Response) => {
         title: catalog.title,
       })
       .from(catalog)
-      .where(eq(catalog.isDeleted , 0))
+      .where(eq(catalog.isDeleted, 0))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -36,7 +36,7 @@ export const getCatalog = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Catalog fetched successfully"
+      "Catalog fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -49,7 +49,10 @@ export const catalogDropDown = async (req: Request, res: Response) => {
     const orderByClause =
       sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
     const [{ total }] = await db.select({ total: count() }).from(catalog);
-    const rows = await db.select({ id: catalog.id, title: catalog.title }).from(catalog).orderBy(orderByClause)
+    const rows = await db
+      .select({ id: catalog.id, title: catalog.title })
+      .from(catalog)
+      .orderBy(orderByClause);
     return successResponse(
       res,
       200,
@@ -62,14 +65,12 @@ export const catalogDropDown = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Catalog fetched successfully"
+      "Catalog fetched successfully",
     );
-  }
-  catch (error) {
+  } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
-
 
 export const getCatalogWithCategory = async (req: Request, res: Response) => {
   try {
@@ -96,7 +97,7 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       .from(catalog)
       .leftJoin(category, eq(catalog.id, category.catalog))
       .leftJoin(color, eq(category.color, color.id))
-      .where(eq(catalog.isDeleted , 1))
+      .where(eq(catalog.isDeleted, 0))
       .orderBy(catalogOrderBy, categoryOrderBy)
       .limit(limit)
       .offset(offset);
@@ -134,7 +135,7 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Catalog fetched successfully"
+      "Catalog fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -168,13 +169,13 @@ export const deleteCatalog = async (req: Request, res: Response) => {
   try {
     const catalogItem = await db
       .update(catalog)
-      .set({isDeleted : 1})
+      .set({ isDeleted: 1 })
       .where(eq(catalog.id, Number(req.params.id)));
     return successResponse(
       res,
       200,
       catalogItem,
-      "Catalog deleted successfully"
+      "Catalog deleted successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
