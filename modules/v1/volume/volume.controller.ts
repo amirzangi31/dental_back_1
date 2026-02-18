@@ -37,7 +37,7 @@ export const getVolume = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Volume fetched successfully"
+      "Volume fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -61,7 +61,13 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
         unit: volume.unit,
       })
       .from(volume)
-      .where(or(eq(volume.category, categoryNumber), isNull(volume.category)))
+      .where(
+        or(
+          eq(volume.category, categoryNumber),
+          eq(volume.isDeleted, 0),
+          isNull(volume.category),
+        ),
+      )
       .orderBy(orderByClause);
     return successResponse(res, 200, volumeList, "Volume fetched successfully");
   } catch (error) {
@@ -89,7 +95,7 @@ export const createVolume = async (req: Request, res: Response) => {
       res,
       200,
       volumeItem[0],
-      "Volume created successfully"
+      "Volume created successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -116,7 +122,7 @@ export const updateVolume = async (req: Request, res: Response) => {
       res,
       200,
       volumeItem[0],
-      "Volume updated successfully"
+      "Volume updated successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -126,7 +132,8 @@ export const updateVolume = async (req: Request, res: Response) => {
 export const deleteVolume = async (req: Request, res: Response) => {
   try {
     const volumeItem = await db
-      .delete(volume)
+      .update(volume)
+      .set({ isDeleted: 1 })
       .where(eq(volume.id, Number(req.params.id)));
     return successResponse(res, 200, volumeItem, "Volume deleted successfully");
   } catch (error) {

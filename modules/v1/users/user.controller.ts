@@ -99,7 +99,7 @@ export const getUsersList = async (req: Request, res: Response) => {
       })
       .from(users)
       .orderBy(orderByClause)
-      .where(or(eq(users.role, "doctor") , eq(users.role, "labrator")))
+      .where(or(eq(users.role, "doctor") , eq(users.role, "labrator") , eq(users.isDeleted , 0)))
       .limit(limit)
       .offset(offset);
     return successResponse(
@@ -181,7 +181,7 @@ export const editUser = async (req: Request, res: Response) => {
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    await db.delete(users).where(eq(users.id, Number(id)));
+    await db.update(users).set({isDeleted : 1}).where(eq(users.id, Number(id)));
     return successResponse(res, 200, {}, "User deleted successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);

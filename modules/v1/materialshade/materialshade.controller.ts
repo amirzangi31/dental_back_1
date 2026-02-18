@@ -24,6 +24,7 @@ export const getMaterialShade = async (req: Request, res: Response) => {
         },
       })
       .from(materialshade)
+      .where(eq(materialshade.isDeleted , 0))
       .leftJoin(color, eq(materialshade.color, color.id))
       .orderBy(orderByClause)
       .limit(limit)
@@ -102,7 +103,8 @@ export const updateMaterialShade = async (req: Request, res: Response) => {
 export const deleteMaterialShade = async (req: Request, res: Response) => {
   try {
     const materialShadeItem = await db
-      .delete(materialshade)
+      .update(materialshade)
+      .set({isDeleted : 1})
       .where(eq(materialshade.id, Number(req.params.id)));
       
     return successResponse(

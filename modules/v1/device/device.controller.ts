@@ -19,6 +19,8 @@ export const getDevice = async (req: Request, res: Response) => {
         file: device.file,
       })
       .from(device)
+      .where(eq(device.isDeleted , 0))
+
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -122,7 +124,8 @@ export const updateDevice = async (req: Request, res: Response) => {
 export const deleteDevice = async (req: Request, res: Response) => {
   try {
     const deviceItem = await db
-      .delete(device)
+      .update(device)
+      .set({isDeleted : 1})
       .where(eq(device.id, Number(req.params.id)));
     return successResponse(
       res,

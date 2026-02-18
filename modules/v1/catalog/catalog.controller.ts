@@ -19,6 +19,7 @@ export const getCatalog = async (req: Request, res: Response) => {
         title: catalog.title,
       })
       .from(catalog)
+      .where(eq(catalog.isDeleted , 0))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -95,6 +96,7 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       .from(catalog)
       .leftJoin(category, eq(catalog.id, category.catalog))
       .leftJoin(color, eq(category.color, color.id))
+      .where(eq(catalog.isDeleted , 1))
       .orderBy(catalogOrderBy, categoryOrderBy)
       .limit(limit)
       .offset(offset);
@@ -165,7 +167,8 @@ export const updateCatalog = async (req: Request, res: Response) => {
 export const deleteCatalog = async (req: Request, res: Response) => {
   try {
     const catalogItem = await db
-      .delete(catalog)
+      .update(catalog)
+      .set({isDeleted : 1})
       .where(eq(catalog.id, Number(req.params.id)));
     return successResponse(
       res,

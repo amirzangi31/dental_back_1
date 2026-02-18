@@ -19,6 +19,7 @@ export const getColor = async (req: Request, res: Response) => {
         category: color.category,
       })
       .from(color)
+      .where(eq(color.isDeleted , 0))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -98,7 +99,8 @@ export const updateColor = async (req: Request, res: Response) => {
 export const deleteColor = async (req: Request, res: Response) => {
   try {
     const deletedColor = await db
-      .delete(color)
+      .update(color)
+      .set({isDeleted : 1})
       .where(eq(color.id, Number(req.params.id)));
     return successResponse(
       res,
