@@ -17,7 +17,7 @@ export const getTickets = async (req: Request, res: Response) => {
       sort === "asc" ? asc(tickets.createdAt) : desc(tickets.createdAt);
 
     // گرفتن تیکت‌ها
-    const ticketsList = await db
+    const ticketsBaseQuery = db
       .select({
         id: tickets.id,
         orderId: tickets.orderId,
@@ -31,8 +31,14 @@ export const getTickets = async (req: Request, res: Response) => {
         },
       })
       .from(tickets)
-      .leftJoin(orders, eq(tickets.orderId, orders.id))
-      .where(eq(tickets.userId, user.userId))
+      .leftJoin(orders, eq(tickets.orderId, orders.id));
+
+    const ticketsQuery =
+      user.role === "admin"
+        ? ticketsBaseQuery
+        : ticketsBaseQuery.where(eq(tickets.userId, user.userId));
+
+    const ticketsList = await ticketsQuery
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -83,10 +89,11 @@ export const getTickets = async (req: Request, res: Response) => {
     });
 
     // total count
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(tickets)
-      .where(eq(tickets.userId, user.userId));
+    const totalBaseQuery = db.select({ total: count() }).from(tickets);
+    const [{ total }] =
+      user.role === "admin"
+        ? await totalBaseQuery
+        : await totalBaseQuery.where(eq(tickets.userId, user.userId));
 
     return successResponse(
       res,
@@ -100,7 +107,7 @@ export const getTickets = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Tickets fetched successfully"
+      "Tickets fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -152,10 +159,10 @@ export const getTicketById = async (req: Request, res: Response) => {
         ...ticketInfo[0],
         messages: messages,
       },
-      "Ticket fetched successfully"
+      "Ticket fetched successfully",
     );
   } catch (error) {
-    console.log(error)
+    console.log(error);
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
@@ -181,15 +188,15 @@ export const createTicket = async (req: Request, res: Response) => {
           res,
           403,
           "You are not authorized to create ticket this order",
-          null
+          null,
         );
     }
-    const parsedOrderId = Number(orderId); 
+    const parsedOrderId = Number(orderId);
 
     if (isNaN(parsedOrderId)) {
-      throw new Error("Invalid orderId"); 
+      throw new Error("Invalid orderId");
     }
-    
+
     const [newTicket] = await db
       .insert(tickets)
       .values({
@@ -199,7 +206,7 @@ export const createTicket = async (req: Request, res: Response) => {
         ticketStatus: "open",
       })
       .returning();
-    if (orderId && orderId !== "0") {  
+    if (orderId && orderId !== "0") {
       await db
         .update(orders)
         .set({ report: newTicket.id })
@@ -227,7 +234,7 @@ export const createTicket = async (req: Request, res: Response) => {
         senderType: user.role === "admin" ? "admin" : "user",
         message,
         file: file?.path,
-      })  
+      })
       .returning();
 
     return successResponse(
@@ -237,10 +244,10 @@ export const createTicket = async (req: Request, res: Response) => {
         ...newTicket,
         message: msg,
       },
-      "Ticket created successfully"
+      "Ticket created successfully",
     );
   } catch (error) {
-    console.log(error)
+    console.log(error);
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
@@ -290,10 +297,14 @@ export const createTicketMessage = async (req: Request, res: Response) => {
         })
         .returning();
     }
-
-    const ticket = await db.select().from(tickets).where(eq(tickets.userId , +user.userId))
-    if(!ticket[0]){
-      return errorResponse(res , 404 , "ticket is not found" , {})
+    if (user.role !== "admin") {
+      const ticket = await db
+        .select()
+        .from(tickets)
+        .where(eq(tickets.userId, +user.userId));
+      if (!ticket[0]) {
+        return errorResponse(res, 404, "ticket is not found", {});
+      }
     }
 
     const msg = await db
