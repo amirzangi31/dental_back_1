@@ -65,7 +65,7 @@ export const catalogDropDown = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Catalog fetched successfully",
+      "Catalog fetched  successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
