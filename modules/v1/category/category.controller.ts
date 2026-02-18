@@ -31,6 +31,7 @@ export const getCategory = async (req: Request, res: Response) => {
         },
       })
       .from(category)
+      .where(eq(category.isDeleted, 0))
       .leftJoin(catalog, eq(category.catalog, catalog.id))
       .leftJoin(color, eq(category.color, color.id))
       .orderBy(orderByClause)
@@ -48,7 +49,7 @@ export const getCategory = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Category fetched successfully"
+      "Category fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -63,13 +64,14 @@ export const getCategoryDropDown = async (req: Request, res: Response) => {
         title: category.title,
       })
       .from(category)
+      .where(eq(category.isDeleted , 0))
       .orderBy(asc(category.title));
-      
+
     return successResponse(
       res,
       200,
       categoryList,
-      "Category fetched successfully"
+      "Category fetched successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -113,7 +115,7 @@ export const createCategory = async (req: Request, res: Response) => {
       res,
       200,
       { category: categoryItem },
-      "Category created successfully"
+      "Category created successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
@@ -153,7 +155,7 @@ export const updateCategory = async (req: Request, res: Response) => {
       200,
 
       { categoryItem },
-      "Category updated successfully"
+      "Category updated successfully",
     );
   } catch (error) {
     console.log(error);
@@ -164,13 +166,14 @@ export const updateCategory = async (req: Request, res: Response) => {
 export const deleteCategory = async (req: Request, res: Response) => {
   try {
     const categoryItem = await db
-      .delete(category)
+      .update(category)
+      .set({ isDeleted: 0 })
       .where(eq(category.id, Number(req.params.id)));
     return successResponse(
       res,
       200,
       categoryItem,
-      "Category deleted successfully"
+      "Category deleted successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
