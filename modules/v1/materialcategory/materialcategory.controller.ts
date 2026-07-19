@@ -2,16 +2,14 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { materialcategory } from "../../../db/schema/materialcategory";
 import { eq, and, asc, desc, count } from "drizzle-orm";
-import { successResponse } from "../../../utils/responses";
+import { errorResponse, successResponse } from "../../../utils/responses";
 import { getPagination } from "../../../utils/pagination";
 
 export const createMaterialCategory = async (req: Request, res: Response) => {
   try {
     const { title } = req.body;
     if (!title) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Title is required" });
+      return errorResponse(res, 400, "TITLE_REQUIRED", null);
     }
 
     const inserted = await db
@@ -19,15 +17,14 @@ export const createMaterialCategory = async (req: Request, res: Response) => {
       .values({ title })
       .returning();
 
-    res.status(201).json({
-      success: true,
-      data: inserted[0],
-      message: "Material category created successfully",
-    });
+    return successResponse(
+      res,
+      201,
+      inserted[0],
+      "MATERIAL_CATEGORY_CREATED",
+    );
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Internal server error", error: err });
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", err);
   }
 };
 
@@ -59,18 +56,16 @@ export const getMaterialCategories = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Material categories fetched successfully"
+      "MATERIAL_CATEGORIES_FETCHED",
     );
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Internal server error", error: err });
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", err);
   }
 };
 
 export const getMaterialCategoryDropDown = async (
   req: Request,
-  res: Response
+  res: Response,
 ) => {
   try {
     const { limit, offset, sort } = getPagination(req);
@@ -99,13 +94,11 @@ export const getMaterialCategoryDropDown = async (
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Material categories fetched successfully"
+      "MATERIAL_CATEGORIES_FETCHED",
     );
   } catch (err) {
     console.log(err);
-    res
-      .status(500)
-      .json({ success: false, message: "Internal server error", error: err });
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", err);
   }
 };
 
@@ -119,25 +112,22 @@ export const getMaterialCategoryById = async (req: Request, res: Response) => {
       .where(
         and(
           eq(materialcategory.id, Number(id)),
-          eq(materialcategory.isDeleted, 0)
-        )
+          eq(materialcategory.isDeleted, 0),
+        ),
       );
 
     if (!category.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Material category not found" });
+      return errorResponse(res, 404, "MATERIAL_CATEGORY_NOT_FOUND", null);
     }
 
-    res.status(200).json({
-      success: true,
-      data: category[0],
-      message: "Material category fetched successfully",
-    });
+    return successResponse(
+      res,
+      200,
+      category[0],
+      "MATERIAL_CATEGORY_FETCHED",
+    );
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Internal server error", error: err });
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", err);
   }
 };
 
@@ -152,27 +142,28 @@ export const updateMaterialCategory = async (req: Request, res: Response) => {
       .where(
         and(
           eq(materialcategory.id, Number(id)),
-          eq(materialcategory.isDeleted, 0)
-        )
+          eq(materialcategory.isDeleted, 0),
+        ),
       )
       .returning();
 
     if (!updated.length) {
-      return res.status(404).json({
-        success: false,
-        message: "Material category not found or already deleted",
-      });
+      return errorResponse(
+        res,
+        404,
+        "MATERIAL_CATEGORY_NOT_FOUND_OR_DELETED",
+        null,
+      );
     }
 
-    res.status(200).json({
-      success: true,
-      data: updated[0],
-      message: "Material category updated successfully",
-    });
+    return successResponse(
+      res,
+      200,
+      updated[0],
+      "MATERIAL_CATEGORY_UPDATED",
+    );
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Internal server error", error: err });
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", err);
   }
 };
 
@@ -187,18 +178,11 @@ export const deleteMaterialCategory = async (req: Request, res: Response) => {
       .returning();
 
     if (!deleted.length) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Material category not found" });
+      return errorResponse(res, 404, "MATERIAL_CATEGORY_NOT_FOUND", null);
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Material category deleted successfully",
-    });
+    return successResponse(res, 200, null, "MATERIAL_CATEGORY_DELETED");
   } catch (err) {
-    res
-      .status(500)
-      .json({ success: false, message: "Internal server error", error: err });
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", err);
   }
 };

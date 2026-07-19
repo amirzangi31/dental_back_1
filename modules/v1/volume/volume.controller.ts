@@ -2,7 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { volume } from "../../../db/schema/volume";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { asc, count, desc, eq, isNull, or } from "drizzle-orm";
+import { asc, count, desc, eq, isNull, or , and } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
 
 export const getVolume = async (req: Request, res: Response) => {
@@ -22,6 +22,7 @@ export const getVolume = async (req: Request, res: Response) => {
         category: volume.category,
       })
       .from(volume)
+      .where(eq(volume.isDeleted, 0))
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -62,13 +63,16 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
       })
       .from(volume)
       .where(
-        or(
-          eq(volume.category, categoryNumber),
+        and(
           eq(volume.isDeleted, 0),
-          isNull(volume.category),
+          or(
+            eq(volume.category, categoryNumber),
+            isNull(volume.category),
+          ),
         ),
       )
       .orderBy(orderByClause);
+      console.log(volumeList)
     return successResponse(res, 200, volumeList, "Volume fetched successfully");
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);

@@ -208,7 +208,6 @@ export const signup = async (req: Request, res: Response) => {
       hashedPassword = await hash(req.body.password, 10);
     }
 
-    // Use Google data if available, otherwise use request body
     const userData = {
       email,
       password: hashedPassword,
@@ -219,6 +218,7 @@ export const signup = async (req: Request, res: Response) => {
       postalCode: req.body.postalCode,
       phoneNumber: req.body.phoneNumber,
       specaility: req.body.specaility,
+      address: req.body.address,
       laboratoryName: req.body.laboratoryName,
       ...(isGoogleSignup && { googleId: googleUserData.googleId }),
     };
@@ -726,16 +726,11 @@ export const googleSignIn = async (req: Request, res: Response) => {
       payload = await verifyGoogleToken(idToken);
     } catch (error: any) {
       console.error("Google token verification error:", error);
-      return errorResponse(
-        res,
-        401,
-        `Invalid Google token: ${error.message}`,
-        null
-      );
+      return errorResponse(res, 401, "INVALID_GOOGLE_TOKEN_DYNAMIC", null);
     }
 
     if (!payload) {
-      return errorResponse(res, 401, "Invalid Google token payload", null);
+      return errorResponse(res, 401, "INVALID_GOOGLE_TOKEN_PAYLOAD", null);
     }
 
     const { email, sub: googleId } = payload;
@@ -827,16 +822,11 @@ export const googleAuth = async (req: Request, res: Response) => {
     try {
       payload = await verifyGoogleToken(idToken);
     } catch (error: any) {
-      return errorResponse(
-        res,
-        401,
-        `Invalid Google token: ${error.message}`,
-        null
-      );
+      return errorResponse(res, 401, "INVALID_GOOGLE_TOKEN_DYNAMIC", null);
     }
 
     if (!payload) {
-      return errorResponse(res, 401, "Invalid Google token payload", null);
+      return errorResponse(res, 401, "INVALID_GOOGLE_TOKEN_PAYLOAD", null);
     }
 
     const { email, given_name, family_name, sub: googleId } = payload;

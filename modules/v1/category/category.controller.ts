@@ -167,7 +167,7 @@ export const deleteCategory = async (req: Request, res: Response) => {
   try {
     const categoryItem = await db
       .update(category)
-      .set({ isDeleted: 0 })
+      .set({ isDeleted: 1 })
       .where(eq(category.id, Number(req.params.id)));
     return successResponse(
       res,

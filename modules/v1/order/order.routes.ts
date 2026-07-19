@@ -17,7 +17,7 @@ import {
   orderlistdesinger,
   uploadDesignerFile,
 } from "./order.controller";
-import { uploadSingle } from "../../../middleware/upload";
+import { uploadSingle, uploadMultipleWithPathFix } from "../../../middleware/upload";
 import { uploadAdminOrderFile } from "../../../middleware/adminOrderUpload";
 import { processOrderFormData } from "../../../middleware/orderFormDataUpload";
 import { isAdmin } from "../../../middleware/isAdmin";
@@ -36,7 +36,7 @@ router.put(
   uploadSingle("file"),
   uploadDesignerFile
 );
-router.put("/submitorderwithuser/:id", auth, uploadSingle("file"), submitOrder);
+router.put("/submitorderwithuser/:id", auth, uploadMultipleWithPathFix("files", 20), submitOrder);
 router.get("/orderlist", auth, orderList);
 router.get("/orders/dropdown", auth, orderDropDown);
 router.get("/orderlistadmin", auth, orderListAdmin);

@@ -7,13 +7,7 @@ export const errorHandling = (
   next: NextFunction
 ) => {
   if (error.code === 11000) {
-    const field = Object.keys(error.keyPattern)[0];
-    return errorResponse(
-      res,
-      400,
-      `کاربری قبلا با این مشخصات ثبت نام شده است`,
-      null
-    );
+    return errorResponse(res, 400, "USER_ALREADY_EXISTS", null);
   }
   if (error.name === "ValidationError") {
     return errorResponse(res, 400, error.message, null);

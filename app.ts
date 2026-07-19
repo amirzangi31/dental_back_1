@@ -28,6 +28,7 @@ import materialCategoryRoutes from "./modules/v1/materialcategory/materialcatego
 
 // Middleware
 import { setHeaders } from "./middleware/headers";
+import { errorResponse } from "./utils/responses";
 
 const app = express();
 
@@ -155,6 +156,18 @@ app.use(
   })
 );
 
+const orderFilesPath = path.join(process.cwd(), "order-files");
+
+app.use(
+  "/order-files",
+  express.static(orderFilesPath, {
+    setHeaders: (res) => {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    },
+  })
+);
+
 /* =======================
    ROUTES
 ======================= */
@@ -182,9 +195,7 @@ app.use("/api/payment", paymentRoutes);
 ======================= */
 app.use((req: Request, res: Response) => {
   logger.warn(`404 Path Not Found: ${req.method} ${req.path}`);
-  res.status(404).json({
-    message: "404! Path Not Found. Please check the path/method",
-  });
+  return errorResponse(res, 404, "PATH_NOT_FOUND", null);
 });
 
 /* =======================
@@ -192,7 +203,7 @@ app.use((req: Request, res: Response) => {
 ======================= */
 app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   logger.error(`${err.message} - ${req.method} ${req.path}`);
-  res.status(500).json({ message: "Internal Server Error" });
+  return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", null);
 });
 
 export default app;

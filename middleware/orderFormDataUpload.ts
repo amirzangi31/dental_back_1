@@ -140,6 +140,29 @@ export const processOrderFormData = (
           filesArray.push(file);
         });
 
+        // فایل‌های attachments (سطح سفارش) از material files جدا و در DB ذخیره می‌شوند
+        const attachmentFiles = filesArray.filter(f => f.fieldname === 'attachments');
+        if (attachmentFiles.length > 0) {
+          const user = (req as any).user;
+          const inserted = await Promise.all(
+            attachmentFiles.map((file) =>
+              db
+                .insert(filesTable)
+                .values({
+                  filename: path.basename(file.path),
+                  originalname: file.originalname,
+                  mimetype: file.mimetype,
+                  size: file.size,
+                  path: file.path,
+                  user_id: user?.userId || user?.id || null,
+                })
+                .returning()
+                .then((rows) => rows[0])
+            )
+          );
+          (req as any).attachmentFileIds = inserted.map((f) => f.id);
+        }
+
         const rootFile = filesMap.get('file');
         if (rootFile) {
           // فایل اصلی سفارش همچنان به صورت مسیر ذخیره می‌شود
@@ -155,7 +178,7 @@ export const processOrderFormData = (
 
         if (orderData.teeth && Array.isArray(orderData.teeth)) {
           let fileIndex = 0;
-          const materialsFiles = filesArray.filter(f => f.fieldname !== 'file');
+          const materialsFiles = filesArray.filter(f => f.fieldname !== 'file' && f.fieldname !== 'attachments');
 
           // حلقه‌های همگام برای استفاده از await
           for (let toothIndex = 0; toothIndex < orderData.teeth.length; toothIndex++) {

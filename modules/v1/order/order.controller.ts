@@ -1,7 +1,7 @@
 import { Request, Response } from "express";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
-import { orders, OrderStatus, orderTeeth } from "../../../db/schema/orders";
+import { orders, OrderStatus, orderTeeth, orderFiles } from "../../../db/schema/orders";
 import { tooth } from "../../../db/schema/tooth";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { calculateTeethTotalPrice } from "../../../utils/calculateTeethPrice";
@@ -10,7 +10,16 @@ import { device } from "../../../db/schema/device";
 import { materialshade } from "../../../db/schema/materialshade";
 import { volume } from "../../../db/schema/volume";
 import { color } from "../../../db/schema/color";
+import { categorycolor } from "../../../db/schema/categorycolor";
 import { files } from "../../../db/schema/files";
+import {
+  generateOrderFormPdfFile,
+  getGenderLabel,
+  getUserTypeLabel,
+  buildFileDownloadUrl,
+  buildToothColorLabel,
+  DownloadableFile,
+} from "../../../utils/orderFormPdf";
 import path from "path";
 import fs from "fs";
 import { vip } from "../../../db/schema/vip";
@@ -231,6 +240,34 @@ export const createOrder = async (req: Request, res: Response) => {
       }),
     );
 
+    // ---------- link attachment files to order ----------
+    const attachmentFileIds: number[] = (req as any).attachmentFileIds ?? [];
+    let attachmentFileRecords: typeof files.$inferSelect[] = [];
+
+    if (attachmentFileIds.length > 0) {
+      await db.insert(orderFiles).values(
+        attachmentFileIds.map((fileId) => ({
+          orderId: createdOrder.id,
+          fileId,
+          role: "user" as const,
+        }))
+      );
+
+      attachmentFileRecords = await db
+        .select()
+        .from(files)
+        .where(inArray(files.id, attachmentFileIds));
+
+      // اگر فایل اصلی سفارش تنظیم نشده، اولین فایل پیوست را به orders.file اضافه کن
+      if (!createdOrder.file && attachmentFileRecords.length > 0) {
+        await db
+          .update(orders)
+          .set({ file: attachmentFileRecords[0].path })
+          .where(eq(orders.id, createdOrder.id));
+        createdOrder.file = attachmentFileRecords[0].path;
+      }
+    }
+
     const [createdPayment] = await db
       .insert(payment)
       .values({
@@ -249,6 +286,7 @@ export const createOrder = async (req: Request, res: Response) => {
         teethIds,
         payment: createdPayment,
         vip: vipPrice || 0,
+        files: attachmentFileRecords,
       },
       "Order created successfully",
     );
@@ -807,6 +845,33 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
       }),
     );
 
+    // ---------- link attachment files to order ----------
+    const attachmentFileIdsRef: number[] = (req as any).attachmentFileIds ?? [];
+    let attachmentFileRecordsRef: typeof files.$inferSelect[] = [];
+
+    if (attachmentFileIdsRef.length > 0) {
+      await db.insert(orderFiles).values(
+        attachmentFileIdsRef.map((fileId) => ({
+          orderId: createdOrder.id,
+          fileId,
+          role: "user" as const,
+        }))
+      );
+
+      attachmentFileRecordsRef = await db
+        .select()
+        .from(files)
+        .where(inArray(files.id, attachmentFileIdsRef));
+
+      if (!createdOrder.file && attachmentFileRecordsRef.length > 0) {
+        await db
+          .update(orders)
+          .set({ file: attachmentFileRecordsRef[0].path })
+          .where(eq(orders.id, createdOrder.id));
+        createdOrder.file = attachmentFileRecordsRef[0].path;
+      }
+    }
+
     const [createdPayment] = await db
       .insert(payment)
       .values({
@@ -826,6 +891,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         payment: createdPayment,
         vip: vipPrice || 0,
         originalOrderId: +id,
+        files: attachmentFileRecordsRef,
       },
       "Order created successfully with reference",
     );
@@ -992,32 +1058,14 @@ export const submitOrder = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { vip, comment } = req.body;
     const user = (req as any).user;
+
     const order = await db.select().from(orders).where(eq(orders.id, +id));
-    const file = req.file;
-    if (file) {
-      const fileRecord = await db
-        .insert(files)
-        .values({
-          filename: file.filename,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-          path: file.path,
-          user_id: (req as any).user?.id || null,
-        })
-        .returning();
-    }
     if (!order.length) return errorResponse(res, 404, "Order not found", null);
     if (order[0].user_id !== user.userId)
-      return errorResponse(
-        res,
-        403,
-        "You are not authorized to submit this order",
-        null,
-      );
-
+      return errorResponse(res, 403, "You are not authorized to submit this order", null);
     if (order[0].paymentstatus)
       return errorResponse(res, 400, "Order is already paid", null);
+
     const paymentItem = await db
       .select()
       .from(payment)
@@ -1025,16 +1073,47 @@ export const submitOrder = async (req: Request, res: Response) => {
     if (paymentItem.length) {
       return errorResponse(res, 400, "Payment already exists", null);
     }
+
+    const uploadedFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
+
+    let firstFilePath: string | null = null;
+    if (uploadedFiles.length > 0) {
+      const insertedFiles = await db
+        .insert(files)
+        .values(
+          uploadedFiles.map((file) => ({
+            filename: file.filename,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+            path: file.path,
+            user_id: user?.id || null,
+          }))
+        )
+        .returning();
+
+      await db.insert(orderFiles).values(
+        insertedFiles.map((f) => ({
+          orderId: +id,
+          fileId: f.id,
+          role: "user" as const,
+        }))
+      );
+
+      firstFilePath = uploadedFiles[0].path;
+    }
+
     await db.insert(payment).values({
       order_id: +id,
       type: "uploadfile",
       status: "pending",
     });
+
     await db
       .update(orders)
       .set({
         comment: comment || null,
-        file: file ? file.path : null,
+        file: firstFilePath,
         status: "design" as OrderStatus,
         vip: vip,
       })
@@ -1130,7 +1209,36 @@ export const orderList = async (req: Request, res: Response) => {
       );
     }
 
-    /* ------------------ CATEGORIES ------------------ */
+    /* ------------------ CATEGORIES + FILES ------------------ */
+    const orderIds = ordersList.map((o) => o.id);
+
+    const allOrderFiles = orderIds.length
+      ? await db
+          .select({
+            orderId: orderFiles.orderId,
+            fileId: files.id,
+            filename: files.filename,
+            originalname: files.originalname,
+            mimetype: files.mimetype,
+            size: files.size,
+            path: files.path,
+            role: orderFiles.role,
+            createdAt: files.createdAt,
+          })
+          .from(orderFiles)
+          .innerJoin(files, eq(files.id, orderFiles.fileId))
+          .where(inArray(orderFiles.orderId, orderIds))
+      : [];
+
+    const filesByOrderId = allOrderFiles.reduce<Record<number, typeof allOrderFiles>>(
+      (acc, f) => {
+        if (!acc[f.orderId]) acc[f.orderId] = [];
+        acc[f.orderId].push(f);
+        return acc;
+      },
+      {}
+    );
+
     const ordersWithCategories = await Promise.all(
       ordersList.map(async (order) => {
         const teethRelations = await db
@@ -1140,31 +1248,30 @@ export const orderList = async (req: Request, res: Response) => {
 
         const teethIds = teethRelations.map((t) => t.toothId);
 
-        if (!teethIds.length) {
-          return { ...order, categories: [] };
+        let uniqueCategories: { categoryId: number | null; categoryName: string | null }[] = [];
+
+        if (teethIds.length) {
+          const teethCategories = await db
+            .select({
+              categoryId: tooth.category,
+              categoryName: category.title,
+            })
+            .from(tooth)
+            .leftJoin(category, eq(tooth.category, category.id))
+            .where(inArray(tooth.id, teethIds));
+
+          uniqueCategories = teethCategories.reduce<
+            { categoryId: number | null; categoryName: string | null }[]
+          >((acc, c) => {
+            if (!acc.find((x) => x.categoryId === c.categoryId)) acc.push(c);
+            return acc;
+          }, []);
         }
-
-        const teethCategories = await db
-          .select({
-            categoryId: tooth.category,
-            categoryName: category.title,
-          })
-          .from(tooth)
-          .leftJoin(category, eq(tooth.category, category.id))
-          .where(inArray(tooth.id, teethIds));
-
-        const uniqueCategories = teethCategories.reduce<
-          { categoryId: number | null; categoryName: string | null }[]
-        >((acc, c) => {
-          if (!acc.find((x) => x.categoryId === c.categoryId)) {
-            acc.push(c);
-          }
-          return acc;
-        }, []);
 
         return {
           ...order,
           categories: uniqueCategories,
+          files: filesByOrderId[order.id] ?? [],
         };
       }),
     );
@@ -1279,6 +1386,35 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
+
+    /* ------------------ FILES ------------------ */
+    const orderIds = ordersList.map(({ orders: order }) => order.id);
+    const allOrderFiles = orderIds.length
+      ? await db
+          .select({
+            orderId: orderFiles.orderId,
+            fileId: files.id,
+            filename: files.filename,
+            originalname: files.originalname,
+            mimetype: files.mimetype,
+            size: files.size,
+            path: files.path,
+            role: orderFiles.role,
+            createdAt: files.createdAt,
+          })
+          .from(orderFiles)
+          .innerJoin(files, eq(files.id, orderFiles.fileId))
+          .where(inArray(orderFiles.orderId, orderIds))
+      : [];
+
+    const filesByOrderId = allOrderFiles.reduce<
+      Record<number, typeof allOrderFiles>
+    >((acc, f) => {
+      if (!acc[f.orderId]) acc[f.orderId] = [];
+      acc[f.orderId].push(f);
+      return acc;
+    }, {});
+
     /* ------------------ CATEGORIES + PAYMENT (OUTPUT SAME) ------------------ */
     const ordersWithCategories = await Promise.all(
       ordersList.map(async ({ orders: order }) => {
@@ -1319,6 +1455,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
           ...order,
           categories: teethCategories,
           payment: paymentItem[0] || null,
+          files: filesByOrderId[order.id] ?? [],
         };
       }),
     );
@@ -1686,7 +1823,6 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
     const { id } = req.params;
     const user = (req as any).user;
 
-    // Get order
     const [order] = await db.select().from(orders).where(eq(orders.id, +id));
 
     if (!order) {
@@ -1705,20 +1841,11 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       );
     }
 
-    // Check if PDF already exists
-    if (order.userfiles) {
-      const pdfPath = path.join(process.cwd(), order.userfiles);
-      if (fs.existsSync(pdfPath)) {
-        return res.download(pdfPath, `order-${id}-materials.pdf`, (err) => {
-          if (err) {
-            console.error("Error downloading existing PDF:", err);
-            // Continue to regenerate if download fails
-          }
-        });
-      }
-    }
+    const [orderUser] = await db
+      .select()
+      .from(users)
+      .where(eq(users.id, order.user_id));
 
-    // Get all teeth for the order
     const teethRelations = await db
       .select()
       .from(orderTeeth)
@@ -1730,17 +1857,29 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
 
     const teethIds = teethRelations.map((t) => t.toothId);
 
-    // Get teeth with materials
     const teethData = await db
       .select({
         id: tooth.id,
         toothnumber: tooth.toothnumber,
+        categoryName: category.title,
+        deviceTitle: device.title,
+        materialshadeTitle: materialshade.title,
+        colorTitle: color.title,
+        colorCategoryTitle: categorycolor.title,
         materials: tooth.materials,
+        volume: tooth.volume,
       })
       .from(tooth)
-      .where(inArray(tooth.id, teethIds));
+      .leftJoin(category, eq(tooth.category, category.id))
+      .leftJoin(device, eq(tooth.device, device.id))
+      .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
+      .leftJoin(color, eq(materialshade.color, color.id))
+      .leftJoin(categorycolor, eq(color.category, categorycolor.id))
+      .where(inArray(tooth.id, teethIds))
+      .orderBy(asc(tooth.toothnumber));
 
-    // Extract all material files - both IDs and direct paths
+    const otherServiceTitles: string[] = [];
+    const deviceTitles = new Set<string>();
     const fileIds: number[] = [];
     const directPathFiles: {
       path: string;
@@ -1753,53 +1892,121 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       { toothnumber: number | null; text: string | null }
     > = {};
 
-    teethData.forEach((t) => {
-      if (t.materials && Array.isArray(t.materials)) {
-        t.materials.forEach((mat: any) => {
+    for (const toothItem of teethData) {
+      if (toothItem.deviceTitle) {
+        deviceTitles.add(toothItem.deviceTitle);
+      }
+
+      if (toothItem.volume && Array.isArray(toothItem.volume)) {
+        for (const vol of toothItem.volume) {
+          if (vol.title) {
+            otherServiceTitles.push(vol.title);
+          }
+        }
+      }
+
+      if (toothItem.materials && Array.isArray(toothItem.materials)) {
+        for (const mat of toothItem.materials as any[]) {
+          if (mat.material) {
+            const [materialItem] = await db
+              .select({ title: material.title })
+              .from(material)
+              .where(eq(material.id, mat.material))
+              .limit(1);
+
+            if (materialItem?.title) {
+              otherServiceTitles.push(materialItem.title);
+            }
+          }
+
           if (mat.file) {
-            // اگر file یک عدد است (id از جدول files)
             if (typeof mat.file === "number") {
               fileIds.push(mat.file);
               if (!fileMetaMap[mat.file]) {
                 fileMetaMap[mat.file] = {
                   toothnumber:
-                    typeof t.toothnumber === "number" ? t.toothnumber : null,
+                    typeof toothItem.toothnumber === "number"
+                      ? toothItem.toothnumber
+                      : null,
                   text: mat.text ?? null,
                 };
               }
-            }
-            // اگر file یک رشته است (مسیر مستقیم فایل)
-            else if (typeof mat.file === "string" && mat.file.length > 0) {
+            } else if (typeof mat.file === "string" && mat.file.length > 0) {
               directPathFiles.push({
                 path: mat.file,
                 toothnumber:
-                  typeof t.toothnumber === "number" ? t.toothnumber : null,
+                  typeof toothItem.toothnumber === "number"
+                    ? toothItem.toothnumber
+                    : null,
                 text: mat.text ?? null,
                 originalname: path.basename(mat.file),
               });
             }
           }
-        });
+        }
       }
-    });
-
-    // اگر نه id و نه مسیر مستقیم وجود نداشت
-    if (fileIds.length === 0 && directPathFiles.length === 0) {
-      return errorResponse(
-        res,
-        404,
-        "No material files found for this order",
-        null,
-      );
     }
 
-    // Get file paths from files table (برای فایل‌هایی که id دارند)
+    const firstToothWithShade = teethData.find(
+      (t) => t.materialshadeTitle || t.colorCategoryTitle || t.colorTitle,
+    );
+
+    const commentLines: string[] = [];
+    if (deviceTitles.size > 0) {
+      commentLines.push(`سیستم: ${Array.from(deviceTitles).join(" / ")}`);
+    }
+    if (order.comment) {
+      commentLines.push(order.comment);
+    }
+
+    const baseUrl = `${req.protocol}://${req.get("host")}`;
+    const downloadableFiles: DownloadableFile[] = [];
+    const addedPaths = new Set<string>();
+
+    const orderAttachmentFiles = await db
+      .select({
+        id: files.id,
+        path: files.path,
+        originalname: files.originalname,
+        mimetype: files.mimetype,
+        role: orderFiles.role,
+      })
+      .from(orderFiles)
+      .innerJoin(files, eq(files.id, orderFiles.fileId))
+      .where(eq(orderFiles.orderId, +id));
+
+    const roleLabel = (role: string | null) => {
+      if (role === "admin") return "فایل ادمین";
+      if (role === "designer") return "فایل طراح";
+      return "فایل پیوست";
+    };
+
+    for (const file of orderAttachmentFiles) {
+      if (!file.path || addedPaths.has(file.path)) continue;
+      addedPaths.add(file.path);
+      downloadableFiles.push({
+        label: roleLabel(file.role),
+        name: file.originalname || path.basename(file.path),
+        url: buildFileDownloadUrl(baseUrl, file.path),
+      });
+    }
+
+    if (order.file && !addedPaths.has(order.file)) {
+      addedPaths.add(order.file);
+      downloadableFiles.push({
+        label: "فایل اصلی فرم",
+        name: path.basename(order.file),
+        url: buildFileDownloadUrl(baseUrl, order.file),
+      });
+    }
+
     let materialFilesFromDB: {
       id: number;
       path: string;
       originalname: string | null;
       mimetype: string | null;
     }[] = [];
+
     if (fileIds.length > 0) {
       materialFilesFromDB = await db
         .select({
@@ -1812,154 +2019,83 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         .where(inArray(files.id, fileIds));
     }
 
-    // Create PDF directory if it doesn't exist
+    for (const file of materialFilesFromDB) {
+      if (addedPaths.has(file.path)) continue;
+      addedPaths.add(file.path);
+      const meta = fileMetaMap[file.id];
+      downloadableFiles.push({
+        label: meta?.toothnumber ? `دندان ${meta.toothnumber}` : "فایل متریال",
+        name: file.originalname || path.basename(file.path),
+        url: buildFileDownloadUrl(baseUrl, file.path),
+        comment: meta?.text ?? null,
+      });
+    }
+
+    for (const file of directPathFiles) {
+      if (addedPaths.has(file.path)) continue;
+      addedPaths.add(file.path);
+      downloadableFiles.push({
+        label: file.toothnumber ? `دندان ${file.toothnumber}` : "فایل متریال",
+        name: file.originalname,
+        url: buildFileDownloadUrl(baseUrl, file.path),
+        comment: file.text ?? null,
+      });
+    }
+
+    const formData = {
+      hiddenField: order.title || "-",
+      userType: orderUser ? getUserTypeLabel(orderUser) : "-",
+      doctorName: orderUser
+        ? `${orderUser.name} ${orderUser.lastName}`.trim()
+        : "-",
+      patientName: order.patientname || "-",
+      gender: getGenderLabel(order.patientgender),
+      colorType: firstToothWithShade?.colorCategoryTitle || "-",
+      colorSystem: firstToothWithShade?.colorTitle || "VITA Classic",
+      shade: firstToothWithShade?.materialshadeTitle || "-",
+      teeth: teethData.map((t) => ({
+        toothnumber: t.toothnumber,
+        categoryName: t.categoryName || "-",
+        colorLabel: buildToothColorLabel(t),
+      })),
+      otherServices:
+        otherServiceTitles.length > 0
+          ? [...new Set(otherServiceTitles)].join(" / ")
+          : "...",
+      downloadableFiles,
+      doctorComments:
+        commentLines.length > 0 ? commentLines.join("\n") : "-",
+    };
+
+    const materialImages = [
+      ...materialFilesFromDB.map((file) => ({
+        filePath: path.join(process.cwd(), file.path),
+        meta: fileMetaMap[file.id] ?? null,
+        originalname: file.originalname || `File ${file.id}`,
+        mimetype: file.mimetype,
+      })),
+      ...directPathFiles.map((file) => ({
+        filePath: path.join(process.cwd(), file.path),
+        meta: { toothnumber: file.toothnumber, text: file.text },
+        originalname: file.originalname,
+        mimetype: null,
+      })),
+    ];
+
     const pdfDir = path.join(process.cwd(), "order-pdfs");
     if (!fs.existsSync(pdfDir)) {
       fs.mkdirSync(pdfDir, { recursive: true });
     }
 
-    // Generate PDF
-    const PDFDocument = require("pdfkit");
     const pdfPath = path.join(pdfDir, `order-${id}-materials.pdf`);
-    const doc = new PDFDocument({ margin: 50 });
+    await generateOrderFormPdfFile(pdfPath, formData, materialImages);
 
-    // Register a font that supports Farsi (Persian) if available
-    // توجه: حتماً فایل فونت را در مسیر زیر قرار بده یا مسیر را با ساختار پروژه‌ات هماهنگ کن
-    const faFontPath = path.join(
-      process.cwd(),
-      "assets",
-      "fonts",
-      "IRANSansX-Medium.ttf",
-    );
-    if (fs.existsSync(faFontPath)) {
-      doc.registerFont("fa", faFontPath);
-      doc.font("fa");
-    }
-
-    // Pipe PDF to file
-    const stream = fs.createWriteStream(pdfPath);
-    doc.pipe(stream);
-
-    // Add images to PDF
-    let imageCount = 0;
-
-    // Helper function to add image to PDF
-    const addImageToPDF = (
-      filePath: string,
-      meta: { toothnumber: number | null; text: string | null } | null,
-      originalname: string,
-      mimetype: string | null,
-    ) => {
-      // Check if file exists
-      if (!fs.existsSync(filePath)) {
-        console.warn(`File not found: ${filePath}`);
-        return false;
-      }
-
-      // Check if it's an image (by mimetype or extension)
-      const isImage =
-        mimetype?.startsWith("image/") ||
-        /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(filePath);
-
-      if (isImage) {
-        try {
-          // Add page break for subsequent images
-          if (imageCount > 0) {
-            doc.addPage();
-          }
-
-          if (meta) {
-            if (meta.toothnumber !== null && meta.toothnumber !== undefined) {
-              doc.moveDown(0.5);
-              doc.fontSize(16).text(`Tooth Number: ${meta.toothnumber}`, {
-                align: "center",
-              });
-            }
-
-            if (meta.text) {
-              doc.moveDown(0.5);
-              doc.fontSize(12).text(`Description: ${meta.text}`, {
-                align: "center",
-              });
-            }
-          }
-
-          doc.moveDown(1);
-
-          doc.image(filePath, {
-            fit: [500, 500],
-            align: "center",
-            valign: "center",
-          });
-
-          doc.moveDown();
-          doc.fontSize(10).text(originalname || path.basename(filePath), {
-            align: "center",
-          });
-
-          imageCount++;
-          return true;
-        } catch (imageError) {
-          console.error(`Error adding image ${filePath}:`, imageError);
-          return false;
-        }
-      }
-      return false;
-    };
-
-    // 1. اضافه کردن فایل‌هایی که از دیتابیس آمده‌اند (با id)
-    for (const file of materialFilesFromDB) {
-      const filePath = path.join(process.cwd(), file.path);
-      const meta = fileMetaMap[file.id];
-      addImageToPDF(
-        filePath,
-        meta,
-        file.originalname || `File ${file.id}`,
-        file.mimetype,
-      );
-    }
-
-    // 2. اضافه کردن فایل‌هایی که مسیر مستقیم دارند
-    for (const file of directPathFiles) {
-      const filePath = path.join(process.cwd(), file.path);
-      const meta = { toothnumber: file.toothnumber, text: file.text };
-      addImageToPDF(filePath, meta, file.originalname, null);
-    }
-
-    // Finalize PDF
-    doc.end();
-
-    // Wait for PDF to be written
-    await new Promise<void>((resolve, reject) => {
-      stream.on("finish", () => {
-        resolve();
-      });
-      stream.on("error", (err: Error) => {
-        reject(err);
-      });
-    });
-
-    if (imageCount === 0) {
-      // Delete empty PDF
-      if (fs.existsSync(pdfPath)) {
-        fs.unlinkSync(pdfPath);
-      }
-      return errorResponse(
-        res,
-        404,
-        "No valid image files found to create PDF",
-        null,
-      );
-    }
-
-    // Save PDF path to userfiles column
     const relativePath = `order-pdfs/order-${id}-materials.pdf`;
     await db
       .update(orders)
       .set({ userfiles: relativePath })
       .where(eq(orders.id, +id));
 
-    // Return PDF
     return res.download(pdfPath, `order-${id}-materials.pdf`, (err) => {
       if (err) {
         console.error("Error downloading PDF:", err);
@@ -2094,6 +2230,32 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
       );
     }
 
+    /* ------------------ FILES ------------------ */
+    const orderIds = ordersList.map((o) => o.id);
+    const allOrderFiles = await db
+      .select({
+        orderId: orderFiles.orderId,
+        fileId: files.id,
+        filename: files.filename,
+        originalname: files.originalname,
+        mimetype: files.mimetype,
+        size: files.size,
+        path: files.path,
+        role: orderFiles.role,
+        createdAt: files.createdAt,
+      })
+      .from(orderFiles)
+      .innerJoin(files, eq(files.id, orderFiles.fileId))
+      .where(inArray(orderFiles.orderId, orderIds));
+
+    const filesByOrderId = allOrderFiles.reduce<
+      Record<number, typeof allOrderFiles>
+    >((acc, f) => {
+      if (!acc[f.orderId]) acc[f.orderId] = [];
+      acc[f.orderId].push(f);
+      return acc;
+    }, {});
+
     /* ------------------ CATEGORIES ------------------ */
     const ordersWithCategories = await Promise.all(
       ordersList.map(async (order) => {
@@ -2103,9 +2265,10 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
           .where(eq(orderTeeth.orderId, order.id));
 
         const teethIds = teethRelations.map((t) => t.toothId);
+        const orderFilesList = filesByOrderId[order.id] ?? [];
 
         if (!teethIds.length) {
-          return { ...order, categories: [] };
+          return { ...order, categories: [], files: orderFilesList };
         }
 
         const teethCategories = await db
@@ -2130,6 +2293,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
         return {
           ...order,
           teeth: teethCategories,
+          files: orderFilesList,
         };
       }),
     );

@@ -12,6 +12,8 @@ import {
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
 import { tooth } from "./tooth";
+import { files } from "./files";
+
 export const patientGenderEnum = ["male", "female"] as const;
 export type PatientGender = (typeof patientGenderEnum)[number];
 export const patientGenderPgEnum = pgEnum("patientgender", patientGenderEnum);
@@ -26,6 +28,13 @@ export const orderStatusEnum = [
 ] as const;
 export type OrderStatus = (typeof orderStatusEnum)[number];
 export const orderStatusPgEnum = pgEnum("status", orderStatusEnum);
+
+export const orderFileRoleEnum = ["user", "admin", "designer"] as const;
+export type OrderFileRole = (typeof orderFileRoleEnum)[number];
+export const orderFileRolePgEnum = pgEnum(
+  "order_file_role",
+  orderFileRoleEnum,
+);
 
 export const orders: any = pgTable("orders", {
   id: serial("id").primaryKey(),
@@ -71,5 +80,21 @@ export const orderTeeth = pgTable(
   },
   (table) => ({
     pk: primaryKey({ columns: [table.orderId, table.toothId] }),
+  })
+);
+
+export const orderFiles = pgTable(
+  "order_files",
+  {
+    orderId: integer("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    fileId: integer("file_id")
+      .notNull()
+      .references(() => files.id, { onDelete: "cascade" }),
+    role: orderFileRolePgEnum("role").$type<OrderFileRole>().default("user"),
+  },
+  (table) => ({
+    pk: primaryKey({ columns: [table.orderId, table.fileId] }),
   })
 );
