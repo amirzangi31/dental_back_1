@@ -3,8 +3,8 @@ import { hash } from "bcryptjs";
 import { db } from "../db";
 import { users } from "../db/schema/users";
 
-const ADMIN_EMAIL = "admin@gmail.com";
-const ADMIN_PASSWORD = "dentalart@2026";
+const ADMIN_EMAIL = "dantalart@gmail.com";
+const ADMIN_PASSWORD = "Dentalart@2026";
 
 async function createAdmin() {
   const hashedPassword = await hash(ADMIN_PASSWORD, 10);
