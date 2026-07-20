@@ -11,7 +11,8 @@
     "start:prod": "NODE_ENV=production node dist/server.js",
     "generate": "npx drizzle-kit generate",
     "migrate": "npx drizzle-kit migrate",
-    "push": "npx drizzle-kit push"
+    "push": "npx drizzle-kit push",
+    "create-admin": "ts-node scripts/create-admin.ts"
   },
   "keywords": [],
   "author": "",
