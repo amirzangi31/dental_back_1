@@ -65,27 +65,25 @@ app.use(setHeaders);
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ extended: true, limit: "10kb" }));
 
-// Fix for Express 5: Make req.query writable for mongoSanitize
-app.use((req: Request, res: Response, next: NextFunction) => {
-  if (req.method === "OPTIONS") {
-    return next();
+// Sanitize request data (Express 5-safe: do not assign to req.query)
+app.use((req: Request, _res: Response, next: NextFunction) => {
+  if (req.body) {
+    req.body = mongoSanitize.sanitize(req.body);
   }
-  // Convert req.query to a writable object for Express 5 compatibility
-  try {
-    Object.defineProperty(req, 'query', {
-      value: { ...req.query },
-      writable: true,
-      configurable: true,
-      enumerable: true,
-    });
-  } catch (err) {
-    // If already writable, continue
+  if (req.params) {
+    req.params = mongoSanitize.sanitize(req.params);
   }
+  if (req.headers) {
+    Object.assign(req.headers, mongoSanitize.sanitize({ ...req.headers }));
+  }
+  Object.defineProperty(req, "query", {
+    value: mongoSanitize.sanitize({ ...(req.query || {}) }),
+    writable: false,
+    configurable: true,
+    enumerable: true,
+  });
   next();
 });
-
-// Sanitize Mongo queries
-app.use(mongoSanitize());
 
 // XSS protection
 app.use(xss());
