@@ -12,7 +12,8 @@
     "generate": "npx drizzle-kit generate",
     "migrate": "npx drizzle-kit migrate",
     "push": "npx drizzle-kit push",
-    "create-admin": "ts-node scripts/create-admin.ts"
+    "create-admin": "ts-node scripts/create-admin.ts",
+    "send-welcome-email": "ts-node scripts/send-welcome-email.ts"
   },
   "keywords": [],
   "author": "",

@@ -13,8 +13,8 @@ export const getVip = async (req: Request, res: Response) => {
     const [{ total }] = await db.select({ total: count() }).from(vip);
     const vipList = await db
       .select({
-        id: vip.id,
-        price: vip.price,
+        id: vip.id, 
+        percent: vip.percent,
         description: vip.description,
         startTime: vip.startTime,
         endTime: vip.endTime,
@@ -48,7 +48,7 @@ export const getVipById = async (req: Request, res: Response) => {
     const vipItem = await db
       .select({
         id: vip.id,
-        price: vip.price,
+        percent: vip.percent,
         description: vip.description,
         startTime: vip.startTime,
         endTime: vip.endTime,
@@ -69,10 +69,10 @@ export const getVipById = async (req: Request, res: Response) => {
 
 export const createVip = async (req: Request, res: Response) => {
   try {
-    const { price, description, startTime, endTime } = req.body;
+    const { percent, description, startTime, endTime } = req.body;
     const [createdVip] = await db
       .insert(vip)
-      .values({ price, description, startTime, endTime })
+      .values({ percent, description, startTime, endTime })
       .returning();
     return successResponse(res, 201, createdVip, "VIP created successfully");
   } catch (error) {
@@ -83,11 +83,11 @@ export const createVip = async (req: Request, res: Response) => {
 export const updateVip = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { price, description, startTime, endTime } = req.body;
+    const { percent, description, startTime, endTime } = req.body;
 
     const [updatedVip] = await db
       .update(vip)
-      .set({ price, description, startTime, endTime })
+      .set({ percent, description, startTime, endTime })
       .where(eq(vip.id, Number(id)))
       .returning();
 

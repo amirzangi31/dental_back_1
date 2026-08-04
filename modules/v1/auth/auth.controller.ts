@@ -1,16 +1,16 @@
+import { compare, hash } from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import { and, asc, count, desc, eq } from "drizzle-orm";
 import { Request, Response } from "express";
+import { OAuth2Client } from "google-auth-library";
+import { decode } from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import redis from "../../../config/redis";
 import { db } from "../../../db";
 import { users } from "../../../db/schema/users";
 import { generateAccessToken } from "../../../utils/generateAccessToken";
-import { errorResponse, successResponse } from "../../../utils/responses";
-import { decode, verify } from "jsonwebtoken";
-import { compare, hash } from "bcryptjs";
-import { OAuth2Client } from "google-auth-library";
 import { getPagination } from "../../../utils/pagination";
+import { errorResponse, successResponse } from "../../../utils/responses";
 
 export const sendemail = async (req: Request, res: Response) => {
   try {
@@ -108,7 +108,7 @@ export const verifyemail = async (req: Request, res: Response) => {
         `refresh:${user[0].id}`,
         refreshToken,
         "EX",
-        parseInt(process.env.REFRESH_TOKEN_TIME as string)
+        parseInt(process.env.REFRESH_TOKEN_TIME as string),
       );
       const accessToken = generateAccessToken({
         userId: user[0].id,
@@ -122,7 +122,7 @@ export const verifyemail = async (req: Request, res: Response) => {
           accessToken: accessToken,
           refreshToken: refreshToken,
         },
-        "User already exists"
+        "User already exists",
       );
     }
 
@@ -141,7 +141,7 @@ export const verifyemail = async (req: Request, res: Response) => {
         `googleUserData:${sessionId}`,
         googleUserDataStr,
         "EX",
-        60 * 60 * 10
+        60 * 60 * 10,
       );
       await redis.del(`googleUserData:${email}`);
 
@@ -156,7 +156,7 @@ export const verifyemail = async (req: Request, res: Response) => {
           lastName: googleUserData.lastName,
           googleId: googleUserData.googleId,
         },
-        "email verified successfully"
+        "email verified successfully",
       );
     }
 
@@ -168,7 +168,7 @@ export const verifyemail = async (req: Request, res: Response) => {
         resultCode: 1200,
         isGoogleSignup: false,
       },
-      "email verified successfully"
+      "email verified successfully",
     );
   } catch (error) {
     if (error instanceof SyntaxError) {
@@ -235,7 +235,7 @@ export const signup = async (req: Request, res: Response) => {
       `refresh:${user[0].id}`,
       refreshToken,
       "EX",
-      parseInt(process.env.REFRESH_TOKEN_TIME as string)
+      parseInt(process.env.REFRESH_TOKEN_TIME as string),
     );
     const accessToken = generateAccessToken({
       userId: user[0].id,
@@ -286,7 +286,7 @@ export const signup = async (req: Request, res: Response) => {
     if (typeof transporter !== "undefined") {
       await transporter.sendMail(mailOptions);
     } else {
-      console.log("",);
+      console.log("");
     }
     return successResponse(
       res,
@@ -295,7 +295,7 @@ export const signup = async (req: Request, res: Response) => {
         accessToken: accessToken,
         refreshToken: refreshToken,
       },
-      "user created successfully"
+      "user created successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
@@ -328,7 +328,7 @@ export const signin = async (req: Request, res: Response) => {
         res,
         400,
         "Please use Google sign in for this account",
-        null
+        null,
       );
     }
 
@@ -346,7 +346,7 @@ export const signin = async (req: Request, res: Response) => {
       "EX",
       req.body.isRemember
         ? parseInt(process.env.REFRESH_TOKEN_TIME_LONG as string)
-        : parseInt(process.env.REFRESH_TOKEN_TIME as string)
+        : parseInt(process.env.REFRESH_TOKEN_TIME as string),
     );
 
     const accessToken = generateAccessToken({
@@ -362,7 +362,7 @@ export const signin = async (req: Request, res: Response) => {
         accessToken,
         refreshToken,
       },
-      "User signed in successfully"
+      "User signed in successfully",
     );
   } catch (error) {
     console.log(error);
@@ -408,7 +408,7 @@ export const refreshToken = async (req: Request, res: Response) => {
           res,
           401,
           "refresh token is invalid or expired",
-          null
+          null,
         );
       }
       if (refreshTokenRedis !== refresh) {
@@ -416,7 +416,7 @@ export const refreshToken = async (req: Request, res: Response) => {
           res,
           401,
           "refresh token is invalid or expired",
-          null
+          null,
         );
       }
     }
@@ -427,7 +427,7 @@ export const refreshToken = async (req: Request, res: Response) => {
       `refresh:${user[0].id}`,
       refreshTokenGenerated,
       "EX",
-      parseInt(process.env.REFRESH_TOKEN_TIME as string)
+      parseInt(process.env.REFRESH_TOKEN_TIME as string),
     );
     const accessToken = generateAccessToken({
       userId: user[0].id,
@@ -441,7 +441,7 @@ export const refreshToken = async (req: Request, res: Response) => {
         accessToken: accessToken,
         refreshToken: refreshTokenGenerated,
       },
-      "token refreshed successfully"
+      "token refreshed successfully",
     );
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
@@ -500,7 +500,7 @@ export const updateUser = async (req: Request, res: Response) => {
         res,
         400,
         "You are not authorized to update this user",
-        null
+        null,
       );
     }
     const updatedUser = await db
@@ -539,7 +539,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
         res,
         200,
         null,
-        "If email exists, OTP has been sent"
+        "If email exists, OTP has been sent",
       );
     }
 
@@ -577,7 +577,7 @@ export const forgotPassword = async (req: Request, res: Response) => {
       res,
       200,
       null,
-      "If email exists, OTP has been sent"
+      "If email exists, OTP has been sent",
     );
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
@@ -619,7 +619,7 @@ export const resetPassword = async (req: Request, res: Response) => {
         res,
         400,
         "This account uses Google sign in. Password reset is not available",
-        null
+        null,
       );
     }
 
@@ -629,7 +629,7 @@ export const resetPassword = async (req: Request, res: Response) => {
         res,
         400,
         "New password must be different from current password",
-        null
+        null,
       );
     }
 
@@ -673,7 +673,7 @@ const verifyGoogleToken = async (idToken: string): Promise<any> => {
       // If OAuth2Client fails (e.g., 403 error), try manual verification
       console.warn(
         "OAuth2Client verification failed, trying manual verification:",
-        error.message
+        error.message,
       );
     }
   }
@@ -740,7 +740,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
         res,
         400,
         "Email is required from Google account",
-        null
+        null,
       );
     }
 
@@ -755,7 +755,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
         res,
         404,
         "User not found. Please sign up first or use the signup endpoint",
-        null
+        null,
       );
     }
 
@@ -782,7 +782,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
       `refresh:${existingUser[0].id}`,
       refreshToken,
       "EX",
-      parseInt(process.env.REFRESH_TOKEN_TIME as string)
+      parseInt(process.env.REFRESH_TOKEN_TIME as string),
     );
 
     const accessToken = generateAccessToken({
@@ -798,7 +798,7 @@ export const googleSignIn = async (req: Request, res: Response) => {
         accessToken,
         refreshToken,
       },
-      "User signed in successfully with Google"
+      "User signed in successfully with Google",
     );
   } catch (error) {
     console.error("Google sign in error:", error);
@@ -836,7 +836,7 @@ export const googleAuth = async (req: Request, res: Response) => {
         res,
         400,
         "Missing required information from Google account",
-        null
+        null,
       );
     }
 
@@ -872,7 +872,7 @@ export const googleAuth = async (req: Request, res: Response) => {
         `refresh:${existingUser[0].id}`,
         refreshToken,
         "EX",
-        parseInt(process.env.REFRESH_TOKEN_TIME as string)
+        parseInt(process.env.REFRESH_TOKEN_TIME as string),
       );
 
       const accessToken = generateAccessToken({
@@ -888,7 +888,7 @@ export const googleAuth = async (req: Request, res: Response) => {
           accessToken,
           refreshToken,
         },
-        "User signed in successfully"
+        "User signed in successfully",
       );
     }
 
@@ -924,7 +924,7 @@ export const googleAuth = async (req: Request, res: Response) => {
       `googleUserData:${email}`,
       JSON.stringify(googleUserData),
       "EX",
-      300
+      300,
     );
 
     if (typeof transporter !== "undefined") {
@@ -945,7 +945,7 @@ export const googleAuth = async (req: Request, res: Response) => {
         googleId,
         sessionId,
       },
-      "OTP sent successfully. Please verify email to complete signup."
+      "OTP sent successfully. Please verify email to complete signup.",
     );
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
@@ -1002,7 +1002,7 @@ export const createDesigner = async (req: Request, res: Response) => {
       res,
       200,
       newDesigner[0],
-      "Designer created successfully"
+      "Designer created successfully",
     );
   } catch (error) {
     console.log(error);
@@ -1083,7 +1083,7 @@ export const updateDesigner = async (req: Request, res: Response) => {
       res,
       200,
       updatedDesigner[0],
-      "Designer updated successfully"
+      "Designer updated successfully",
     );
   } catch (error) {
     console.log(error);
@@ -1165,7 +1165,7 @@ export const getDesigners = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Designers fetched successfully"
+      "Designers fetched successfully",
     );
   } catch (error) {
     console.log(error);
@@ -1204,7 +1204,7 @@ export const getDesignersDropdown = async (req: Request, res: Response) => {
           totalPages: Math.max(Math.ceil(total / limit), 1),
         },
       },
-      "Designers fetched successfully"
+      "Designers fetched successfully",
     );
   } catch (error) {
     console.log(error);
@@ -1243,7 +1243,7 @@ export const getByIdDesigner = async (req: Request, res: Response) => {
       res,
       200,
       designer[0],
-      "Designer fetched successfully"
+      "Designer fetched successfully",
     );
   } catch (error) {
     console.log(error);

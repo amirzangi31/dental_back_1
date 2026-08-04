@@ -101,6 +101,7 @@ app.use(
 );
 
 // CORS
+
 // const allowedOrigins = ["https://my.digitda.de"];
 const allowedOrigins = (
   process.env.ALLOWED_ORIGINS ||
