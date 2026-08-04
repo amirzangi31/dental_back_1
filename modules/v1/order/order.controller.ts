@@ -137,14 +137,15 @@ export const createOrder = async (req: Request, res: Response) => {
     const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
     const [vipItem] = await db.select().from(vip);
-    const vipPrice = vipItem ? Number(vipItem.price || 0) : 0;
+    const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
 
-    // Calculate final total: subtotal + VIP + Tax
+    // Calculate final total: subtotal + VIP% + Tax
     const isVip = vipParametr === "true" || vipParametr === true;
     if (hasMissingPrice) {
       totalPrice = 0;
     }
-    const vipAmount = isVip && !hasMissingPrice ? vipPrice : 0;
+    const vipAmount =
+      isVip && !hasMissingPrice ? (totalPrice * vipPercent) / 100 : 0;
     const totalBeforeTax = totalPrice + vipAmount;
     const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
     const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
@@ -285,7 +286,8 @@ export const createOrder = async (req: Request, res: Response) => {
         teeth: finalTeeth,
         teethIds,
         payment: createdPayment,
-        vip: vipPrice || 0,
+        vip: vipAmount || 0,
+        vipPercent: vipPercent || 0,
         files: attachmentFileRecords,
       },
       "Order created successfully",
@@ -351,7 +353,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
     const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
     const [vipItem] = await db.select().from(vip);
-    const vipPrice = vipItem ? Number(vipItem.price || 0) : 0;
+    const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
 
     // ساخت خروجی مشابه ToothType interface
     const teethDetails: any[] = [];
@@ -464,7 +466,8 @@ export const getOrderWithId = async (req: Request, res: Response) => {
     // محاسبه summary
     const isVip = order.vip === true;
     const finalSubtotal = hasMissingPrice ? 0 : subtotal;
-    const vipAmount = !hasMissingPrice && isVip ? vipPrice : 0;
+    const vipAmount =
+      !hasMissingPrice && isVip ? (finalSubtotal * vipPercent) / 100 : 0;
     const totalBeforeTax = finalSubtotal + vipAmount;
     const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
     const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
@@ -478,13 +481,14 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         summary: {
           subtotal: finalSubtotal,
           vip: vipAmount,
+          vipPercent: vipPercent,
           taxPercent: taxPercent,
           taxAmount: taxAmount,
           total: finalTotal,
           hasMissingPrice: hasMissingPrice,
           vipInfo: vipItem
             ? {
-                price: vipItem.price,
+                percent: vipItem.percent,
                 des: vipItem.description,
                 startTime: vipItem.startTime,
                 endTime: vipItem.endTime,
@@ -745,12 +749,12 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
     const [vipItem] = await db.select().from(vip);
-    const vipPrice = vipItem ? Number(vipItem.price || 0) : 0;
+    const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
 
     const halfPrice = totalPrice / 2;
 
     const isVip = vipParametr === "true" || vipParametr === true;
-    const vipAmount = isVip ? vipPrice : 0;
+    const vipAmount = isVip ? (halfPrice * vipPercent) / 100 : 0;
     const totalBeforeTax = halfPrice + vipAmount;
     const taxAmount = (totalBeforeTax * taxPercent) / 100;
     const finalTotal = totalBeforeTax + taxAmount;
@@ -889,7 +893,8 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         teeth: finalTeeth,
         teethIds,
         payment: createdPayment,
-        vip: vipPrice || 0,
+        vip: vipAmount || 0,
+        vipPercent: vipPercent || 0,
         originalOrderId: +id,
         files: attachmentFileRecordsRef,
       },
@@ -1034,7 +1039,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       })
       .where(eq(orders.id, +id))
       .returning();
-    const [vipPrice] = await db.select({ price: vip.price }).from(vip);
+    const [vipItem] = await db.select({ percent: vip.percent }).from(vip);
 
     return successResponse(
       res,
@@ -1043,7 +1048,7 @@ export const updateOrder = async (req: Request, res: Response) => {
         order: updatedOrder,
         teeth: finalTeeth,
         teethIds,
-        vip: vipPrice ? vipPrice.price : 0,
+        vipPercent: vipItem ? Number(vipItem.percent || 0) : 0,
       },
       "Order updated successfully",
     );
@@ -1512,9 +1517,9 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .where(eq(orders.id, +orderId));
     if (!order) return errorResponse(res, 404, "Order not found", null);
 
-    const vipPrice = await db.select({ price: vip.price }).from(vip);
-    if (vipPrice.length === 0) {
-      return errorResponse(res, 404, "VIP price not found", null);
+    const vipRows = await db.select({ percent: vip.percent }).from(vip);
+    if (vipRows.length === 0) {
+      return errorResponse(res, 404, "VIP percent not found", null);
     }
 
     const [currentOrder] = await db
@@ -1524,13 +1529,16 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .limit(1);
 
     const adminFileValue = file ? file.path : (currentOrder?.adminFile || null);
+    const basePrice = Number(totalPrice);
+    const vipPercent = Number(vipRows[0]?.percent || 0);
+    const vipAmount = order.vip ? (basePrice * vipPercent) / 100 : 0;
 
     await db
       .update(orders)
       .set({
         status: status as OrderStatus,
         adminFile: adminFileValue,
-        totalaprice: String(Number(totalPrice) + Number(vipPrice[0]?.price)),
+        totalaprice: String(basePrice + vipAmount),
         paymentstatus: status !== "uploadfile" ? true : false,
       })
       .where(eq(orders.id, +orderId));
@@ -1676,6 +1684,30 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
   }
 };
 
+const timeToSeconds = (time: string) => {
+  const [h = "0", m = "0", s = "0"] = time.split(":");
+  return Number(h) * 3600 + Number(m) * 60 + Number(s);
+};
+
+const isWithinVipHours = (
+  startTime?: string | null,
+  endTime?: string | null,
+) => {
+  if (!startTime || !endTime) return false;
+
+  const now = new Date();
+  const current =
+    now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const start = timeToSeconds(startTime);
+  const end = timeToSeconds(endTime);
+
+  // بازه عادی: 09:00 → 18:00 | بازه شبانه: 22:00 → 06:00
+  if (start <= end) {
+    return current >= start && current <= end;
+  }
+  return current >= start || current <= end;
+};
+
 export const calculateOrderPrice = async (req: Request, res: Response) => {
   try {
     const { teeth, vip: vipParametr } = req.body;
@@ -1687,7 +1719,10 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
     const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
 
     const [vipItem] = await db.select().from(vip);
-    const vipPrice = vip && vipItem ? Number(vipItem.price || 0) : 0;
+    const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
+    const hasVip = isWithinVipHours(vipItem?.startTime, vipItem?.endTime);
+    const isVip =
+      hasVip && (vipParametr === "true" || vipParametr === true);
 
     const teethDetails: any[] = [];
     let hasMissingPrice = false;
@@ -1784,7 +1819,8 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
     }
 
     const finalSubtotal = hasMissingPrice ? 0 : subtotal;
-    const vipAmount = !hasMissingPrice || !vipParametr ? 0 : vipPrice;
+    const vipAmount =
+      !hasMissingPrice && isVip ? (finalSubtotal * vipPercent) / 100 : 0;
     const totalBeforeTax = finalSubtotal + vipAmount;
     const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
     const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
@@ -1797,13 +1833,15 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
         summary: {
           subtotal: finalSubtotal,
           vip: vipAmount,
+          vipPercent: vipPercent,
+          hasVip,
           taxPercent: taxPercent,
           taxAmount: taxAmount,
           total: finalTotal,
           hasMissingPrice: hasMissingPrice,
           vipInfo: vipItem
             ? {
-                price: vipItem.price,
+                percent: vipItem.percent,
                 des: vipItem.description,
                 startTime: vipItem.startTime,
                 endTime: vipItem.endTime,
