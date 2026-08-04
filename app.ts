@@ -102,14 +102,22 @@ app.use(
 
 // CORS
 // const allowedOrigins = ["https://my.digitda.de"];
-const allowedOrigins = ["http://localhost:3000"];
+const allowedOrigins = (
+  process.env.ALLOWED_ORIGINS ||
+  "http://localhost:3000,https://my.digitda.de"
+)
+  .split(",")
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin || allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error("Not allowed by CORS"));
     },
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
     credentials: true,
   })
 );
