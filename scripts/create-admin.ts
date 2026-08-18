@@ -3,7 +3,7 @@ import { hash } from "bcryptjs";
 import { db } from "../db";
 import { users } from "../db/schema/users";
 
-const ADMIN_EMAIL = "dantalart@gmail.com";
+const ADMIN_EMAIL = "dentalart@gmail.com";
 const ADMIN_PASSWORD = "Dentalart@2026";
 
 async function createAdmin() {

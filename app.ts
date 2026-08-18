@@ -101,9 +101,11 @@ app.use(
 );
 
 // CORS
+
+// const allowedOrigins = ["https://my.digitda.de"];
 const allowedOrigins = (
   process.env.ALLOWED_ORIGINS ||
-  "http://localhost:3000,http://91.107.174.197:3000"
+  "http://localhost:3000,https://my.digitda.de"
 )
   .split(",")
   .map((o) => o.trim())
