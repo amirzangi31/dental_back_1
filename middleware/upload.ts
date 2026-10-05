@@ -31,7 +31,8 @@ const fileFilter = (
     "application/msword",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/x-zip-compressed",
-    "application/octet-stream"
+    "application/octet-stream",
+    "model/stl",
   ];
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);

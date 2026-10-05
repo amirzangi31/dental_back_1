@@ -39,6 +39,8 @@ const fileFilter = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "application/zip",
     "application/x-zip-compressed",
+    "model/stl",
+    
   ];
 
   if (allowedMimes.includes(file.mimetype)) {
