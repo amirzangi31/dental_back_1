@@ -16,25 +16,46 @@ const storage = multer.diskStorage({
   },
 });
 
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  ".stl",
+  ".ply",
+  ".obj",
+  ".dcm",
+  ".dicom",
+  ".3oxz",
+  ".xml",
+  ".dentalproject",
+  ".constructioninfo",
+  ".blend",
+  ".jpg",
+  ".jpeg",
+  ".png",
+  ".heic",
+  ".tif",
+  ".tiff",
+  ".bmp",
+  ".pdf",
+  ".zip",
+  ".rar",
+  ".7z",
+  ".xyz",
+  ".gif",
+  ".webp",
+  ".doc",
+  ".docx",
+]);
+
+export function isAllowedUploadFile(originalname: string): boolean {
+  const ext = path.extname(originalname).toLowerCase();
+  return ALLOWED_UPLOAD_EXTENSIONS.has(ext);
+}
+
 const fileFilter = (
   req: Request,
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
-  const allowedMimes = [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/x-zip-compressed",
-    "application/octet-stream",
-    "model/stl",
-  ];
-  if (allowedMimes.includes(file.mimetype)) {
+  if (isAllowedUploadFile(file.originalname)) {
     cb(null, true);
   } else {
     cb(new Error("نوع فایل مجاز نیست"));

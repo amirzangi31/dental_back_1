@@ -4,6 +4,7 @@ import { Request } from "express";
 import { errorResponse } from "../utils/responses";
 import { Response, NextFunction } from "express";
 import fs from "fs";
+import { isAllowedUploadFile } from "./upload";
 
 // ایجاد پوشه order-files در صورت عدم وجود
 const orderFilesDir = "order-files";
@@ -28,21 +29,7 @@ const fileFilter = (
   file: Express.Multer.File,
   cb: multer.FileFilterCallback
 ) => {
-  const allowedMimes = [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/gif",
-    "image/webp",
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "application/zip",
-    "application/x-zip-compressed",
-    "model/stl",
-  ];
-
-  if (allowedMimes.includes(file.mimetype)) {
+  if (isAllowedUploadFile(file.originalname)) {
     cb(null, true);
   } else {
     cb(new Error("نوع فایل مجاز نیست"));
