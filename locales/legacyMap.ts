@@ -180,6 +180,8 @@ export const LEGACY_MESSAGE_MAP: Record<string, MessageKey> = {
   "Tax not found": "TAX_NOT_FOUND",
   "Invoice not found": "INVOICE_NOT_FOUND",
   "Invoice fetched successfully": "INVOICE_FETCHED",
+  "Seller profile fetched successfully": "SELLER_PROFILE_FETCHED",
+  "Seller profile saved successfully": "SELLER_PROFILE_SAVED",
   "Tax fetched successfully": "TAX_FETCHED",
   "Tax created successfully": "TAX_CREATED",
   "Tax updated successfully": "TAX_UPDATED",

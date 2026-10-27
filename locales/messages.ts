@@ -793,6 +793,16 @@ export const MESSAGES = {
     en: "Invoice fetched successfully",
     de: "Rechnung erfolgreich abgerufen",
   },
+  SELLER_PROFILE_FETCHED: {
+    fa: "پروفایل فروشنده با موفقیت دریافت شد",
+    en: "Seller profile fetched successfully",
+    de: "Verkäuferprofil erfolgreich abgerufen",
+  },
+  SELLER_PROFILE_SAVED: {
+    fa: "پروفایل فروشنده با موفقیت ذخیره شد",
+    en: "Seller profile saved successfully",
+    de: "Verkäuferprofil erfolgreich gespeichert",
+  },
   TAX_FETCHED: {
     fa: "مالیات با موفقیت دریافت شد",
     en: "Tax fetched successfully",

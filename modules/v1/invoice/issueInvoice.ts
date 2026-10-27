@@ -16,6 +16,7 @@ import {
   toInvoiceDocument,
 } from "./invoiceDocument";
 import { readInvoiceByOrderId } from "./readInvoice";
+import { readSellerProfile } from "./sellerProfile";
 
 const finiteNumber = (value: unknown) => {
   const amount = Number(value ?? 0);
@@ -105,6 +106,7 @@ export const issueInvoiceForSettlement = async (
     paidToman: input.paidToman,
   });
 
+  const seller = await readSellerProfile(tx);
   const notes = invoiceNotes(order.comment, input.trackingCode);
   const issuedAt = new Date();
   const [created] = await tx
@@ -120,14 +122,14 @@ export const issueInvoiceForSettlement = async (
       buyerEconomicNumber: null,
       buyerNationalId: null,
       buyerCity: null,
-      sellerName: null,
-      sellerEconomicNumber: null,
-      sellerNationalId: null,
-      sellerRegistrationNumber: null,
-      sellerPostalCode: null,
-      sellerCity: null,
-      sellerAddress: null,
-      sellerPhone: null,
+      sellerName: seller.name,
+      sellerEconomicNumber: seller.economicNumber,
+      sellerNationalId: seller.nationalId,
+      sellerRegistrationNumber: seller.registrationNumber,
+      sellerPostalCode: seller.postalCode,
+      sellerCity: seller.city,
+      sellerAddress: seller.address,
+      sellerPhone: seller.phone,
       taxNumber: null,
       taxPercent: money.taxPercent.toFixed(2),
       paidToman: money.paidToman,
