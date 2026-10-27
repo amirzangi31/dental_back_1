@@ -8,6 +8,7 @@ import { material } from "../../../db/schema/material";
 import { tax } from "../../../db/schema/tax";
 import { vip } from "../../../db/schema/vip";
 import {
+  blank,
   buildInvoiceMoney,
   buyerDisplayName,
   invoiceNotes,
@@ -164,9 +165,4 @@ export const issueInvoiceForSettlement = async (
     : [];
 
   return toInvoiceDocument(created, createdLines);
-};
-
-const blank = (value: string | null | undefined) => {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
 };

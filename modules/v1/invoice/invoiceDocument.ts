@@ -89,7 +89,7 @@ export type InvoiceMoney = {
   paidToman: number;
 };
 
-const blank = (value: string | null | undefined) => {
+export const blank = (value: string | null | undefined) => {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
 };
