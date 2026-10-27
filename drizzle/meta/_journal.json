@@ -29,6 +29,20 @@
       "when": 1785779148253,
       "tag": "0003_cute_cerise",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793113251297,
+      "tag": "0004_zarinpal_payment",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793115721254,
+      "tag": "0005_invoice",
+      "breakpoints": true
     }
   ]
 }

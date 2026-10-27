@@ -783,6 +783,16 @@ export const MESSAGES = {
     en: "Tax not found",
     de: "Steuer nicht gefunden",
   },
+  INVOICE_NOT_FOUND: {
+    fa: "فاکتور یافت نشد",
+    en: "Invoice not found",
+    de: "Rechnung nicht gefunden",
+  },
+  INVOICE_FETCHED: {
+    fa: "فاکتور با موفقیت دریافت شد",
+    en: "Invoice fetched successfully",
+    de: "Rechnung erfolgreich abgerufen",
+  },
   TAX_FETCHED: {
     fa: "مالیات با موفقیت دریافت شد",
     en: "Tax fetched successfully",

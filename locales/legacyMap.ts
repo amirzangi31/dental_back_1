@@ -178,6 +178,8 @@ export const LEGACY_MESSAGE_MAP: Record<string, MessageKey> = {
   // مالیات / VIP / شید
   "Taxes fetched successfully": "TAXES_FETCHED",
   "Tax not found": "TAX_NOT_FOUND",
+  "Invoice not found": "INVOICE_NOT_FOUND",
+  "Invoice fetched successfully": "INVOICE_FETCHED",
   "Tax fetched successfully": "TAX_FETCHED",
   "Tax created successfully": "TAX_CREATED",
   "Tax updated successfully": "TAX_UPDATED",

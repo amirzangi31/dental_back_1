@@ -9,16 +9,20 @@ import {
   updatePayment,
   uploadFileForPayment,
   acceptPayment,
+  startZarinpalPayment,
+  zarinpalCallback,
 } from "./payment.controller";
 
 const router = express.Router();
 
+router.get("/zarinpal/callback", zarinpalCallback);
+router.post("/zarinpal/request/:orderId", auth, startZarinpalPayment);
 router.get("/payments", auth, getPayments);
 router.get("/payment/:id", auth, getPaymentById);
 router.post("/payment", auth, uploadSingle("file"), createPayment);
 router.put("/payment/:id", auth, uploadSingle("file"), updatePayment);
 router.delete("/payment/:id", auth, deletePayment);
-router.put("/payment/upload-file/:id", auth, uploadSingle("file"), uploadFileForPayment);
+router.put("/payment/upload-file/:id", auth, uploadFileForPayment);
 router.put("/payment/accept/:id", auth, acceptPayment);
 export default router;
 

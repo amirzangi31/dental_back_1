@@ -10,7 +10,7 @@ import {
 import { orders } from "./orders";
 
 export const paymentStatusEnum = ["pending", "paid", "failed"] as const;
-export const paymentTypeEnum = ["uploadfile", "paypal"] as const;
+export const paymentTypeEnum = ["uploadfile", "paypal", "zarinpal"] as const;
 export type PaymentStatus = (typeof paymentStatusEnum)[number];
 
 export const paymentStatusPgEnum = pgEnum("paymentStatus", paymentStatusEnum);
@@ -26,6 +26,9 @@ export const payment = pgTable("payment", {
   description: text("description"),
   type: paymentTypePgEnum("type").$type<PaymentType>(),
   trackingCode: text("trackingCode"),
+  authority: text("authority"),
+  refId: text("refId"),
+  amount: integer("amount"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

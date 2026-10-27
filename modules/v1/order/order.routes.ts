@@ -21,6 +21,10 @@ import { uploadSingle, uploadMultipleWithPathFix } from "../../../middleware/upl
 import { uploadAdminOrderFile } from "../../../middleware/adminOrderUpload";
 import { processOrderFormData } from "../../../middleware/orderFormDataUpload";
 import { isAdmin } from "../../../middleware/isAdmin";
+import {
+  downloadOrderInvoice,
+  getOrderInvoice,
+} from "../invoice/invoice.controller";
 
 const router = express.Router();
 
@@ -28,6 +32,8 @@ router.post("/order", auth, processOrderFormData, createOrder);
 router.post("/order/:id/with-reference", auth, processOrderFormData, createOrderWithRefrence);
 router.post("/calculateOrderPrice", calculateOrderPrice);
 router.get("/order/:id/material-files-pdf", auth, generateMaterialFilesPDF);
+router.get("/order/:id/invoice/download", auth, downloadOrderInvoice);
+router.get("/order/:id/invoice", auth, getOrderInvoice);
 router.get("/order/:id", auth, getOrderWithId);
 router.put("/order/:id", auth, updateOrder);
 router.put(

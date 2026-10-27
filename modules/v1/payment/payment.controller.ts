@@ -10,6 +10,14 @@ import { tooth } from "../../../db/schema/tooth";
 import { category } from "../../../db/schema/category";
 import { device } from "../../../db/schema/device";
 import { materialshade } from "../../../db/schema/materialshade";
+import {
+  ensurePendingPayment,
+  findOrderPayment,
+  tomanAmount,
+} from "./orderPayment";
+import { requestZarinpalPayment, verifyZarinpalPayment } from "./zarinpal";
+import { issueInvoiceForSettlement } from "../invoice/issueInvoice";
+import { readInvoiceByOrderId } from "../invoice/readInvoice";
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
@@ -167,6 +175,10 @@ export const createPayment = async (req: Request, res: Response) => {
     const { orderId, status, type } = req.body;
     const file = req.file;
 
+    if (status === "paid") {
+      return errorResponse(res, 400, "Payment status cannot be set to paid", null);
+    }
+
     const values: any = {
       order_id: orderId ? Number(orderId) : null,
       status,
@@ -198,6 +210,20 @@ export const updatePayment = async (req: Request, res: Response) => {
     const { id } = req.params;
     const { orderId, status, type } = req.body;
     const file = req.file;
+
+    if (status === "paid") {
+      return errorResponse(res, 400, "Payment status cannot be set to paid", null);
+    }
+
+    if (status) {
+      const [current] = await db
+        .select({ status: payment.status })
+        .from(payment)
+        .where(eq(payment.id, Number(id)));
+      if (current?.status === "paid") {
+        return errorResponse(res, 400, "A settled payment cannot be changed", null);
+      }
+    }
 
     const updateData: any = {};
     if (orderId !== undefined) updateData.order_id = Number(orderId);
@@ -256,82 +282,216 @@ export const deletePayment = async (req: Request, res: Response) => {
   }
 };
 
-export const uploadFileForPayment = async (req: Request, res: Response) => {
-  try {
-    const { id } = req.params;
-    const { trackingCode } = req.body;
-    const file = req.file;
-    if (!file) {
-      return errorResponse(res, 400, "File is required", null);
-    }
-    if (!trackingCode) {
-      return errorResponse(res, 400, "Tracking code is required", null);
-    }
-    if (!id) {
-      return errorResponse(res, 400, "Payment id is required", null);
-    }
-    const paymentItem = await db
-      .select({
-        userId: orders.user_id,
-      })
+export const uploadFileForPayment = async (_req: Request, res: Response) => {
+  return errorResponse(res, 400, "Receipt payment is disabled", null);
+};
+
+
+export const acceptPayment = async (_req: Request, res: Response) => {
+  return errorResponse(res, 400, "Receipt payment is disabled", null);
+};
+
+const settleVerifiedPayment = async (
+  paymentId: number,
+  refId: string | null,
+) => {
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
       .from(payment)
-      .where(eq(payment.id, Number(id)))
-      .leftJoin(orders, eq(payment.order_id, orders.id));
-    if (!paymentItem.length) {
-      return errorResponse(res, 404, "Payment not found", null);
+      .where(eq(payment.id, paymentId))
+      .for("update");
+
+    if (!current) return null;
+    if (current.status === "paid") {
+      const existingInvoice = current.order_id
+        ? await readInvoiceByOrderId(current.order_id, tx)
+        : null;
+      return { payment: current, alreadyPaid: true, invoice: existingInvoice };
     }
+
+    const [updatedPayment] = await tx
+      .update(payment)
+      .set({
+        status: "paid",
+        isAccepted: true,
+        refId,
+        updatedAt: new Date(),
+      })
+      .where(eq(payment.id, paymentId))
+      .returning();
+
+    if (current.order_id) {
+      await tx
+        .update(orders)
+        .set({
+          paymentstatus: true,
+          status: "check",
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, current.order_id));
+    }
+
+    const issuedInvoice = current.order_id
+      ? await issueInvoiceForSettlement(tx, {
+          orderId: current.order_id,
+          paymentId,
+          paidToman: current.amount ?? 0,
+          trackingCode: refId,
+        })
+      : null;
+
+    return { payment: updatedPayment, alreadyPaid: false, invoice: issuedInvoice };
+  });
+};
+
+export const startZarinpalPayment = async (req: Request, res: Response) => {
+  try {
+    const orderId = Number(req.params.orderId);
     const user = (req as any).user;
 
-    if (paymentItem[0].userId !== user.userId) {
-      return errorResponse(res, 403, "You are not authorized to upload file for this payment", null);
+    if (!orderId) {
+      return errorResponse(res, 400, "Order id is required", null);
     }
 
-    await db.update(payment).set({
-      file: file.path,
-      trackingCode: trackingCode,
-      isAccepted : false,
-      status: "pending",
-    }).where(eq(payment.id, Number(id)));
+    const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+    if (!order) return errorResponse(res, 404, "Order not found", null);
+    if (order.user_id !== user.userId) {
+      return errorResponse(res, 403, "You are not authorized to pay this order", null);
+    }
+    if (order.status !== "payment") {
+      return errorResponse(res, 400, "Order is not awaiting payment", null);
+    }
+    if (order.paymentstatus) {
+      return errorResponse(res, 400, "Order is already paid", null);
+    }
 
-    const updatedPayment = await db.select().from(payment).where(eq(payment.id, Number(id)));
-    return successResponse(res, 200, updatedPayment[0], "File uploaded successfully");
+    const existing = await findOrderPayment(orderId);
+    if (existing?.status === "paid") {
+      return errorResponse(res, 400, "Order is already paid", null);
+    }
+
+    const paymentRow = existing ?? (await ensurePendingPayment(orderId));
+    const amount = tomanAmount(order.totalaprice);
+    if (amount < 1000) {
+      return errorResponse(
+        res,
+        400,
+        "Payable amount must be at least 1000 toman",
+        null,
+      );
+    }
+
+    let started;
+    try {
+      started = await requestZarinpalPayment(amount, `Order ${orderId}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Zarinpal request failed";
+      return errorResponse(res, 502, message, null);
+    }
+
+    const [updated] = await db
+      .update(payment)
+      .set({
+        type: "zarinpal",
+        status: "pending",
+        isAccepted: false,
+        authority: started.authority,
+        amount,
+        updatedAt: new Date(),
+      })
+      .where(eq(payment.id, paymentRow.id))
+      .returning();
+
+    return successResponse(
+      res,
+      200,
+      {
+        payment: updated,
+        authority: started.authority,
+        amount,
+        url: started.url,
+      },
+      "Payment started successfully",
+    );
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
 
-
-export const acceptPayment = async (req: Request, res: Response) => {
+export const zarinpalCallback = async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const { accept  , description  } = req.body;
-    const user = (req as any).user; 
-    if (user.role !== "admin") {
-      return errorResponse(res, 403, "You are not authorized to accept this payment", null);
+    const authority = String(req.query.Authority || req.query.authority || "");
+    const gatewayStatus = String(req.query.Status || req.query.status || "");
+
+    if (!authority) {
+      return errorResponse(res, 400, "Authority is required", null);
     }
-    const paymentItem = await db.select().from(payment).where(eq(payment.id, Number(id)));
-    if (!paymentItem.length) {
+
+    const [paymentRow] = await db
+      .select()
+      .from(payment)
+      .where(eq(payment.authority, authority));
+
+    if (!paymentRow) {
       return errorResponse(res, 404, "Payment not found", null);
     }
 
-    if(accept) {
-      await db.update(payment).set({
-        isAccepted: true,
-        status: "paid",
-        description: description,
-      }).where(eq(payment.id, Number(id)));
+    if (paymentRow.status === "paid") {
+      const existingInvoice = paymentRow.order_id
+        ? await readInvoiceByOrderId(paymentRow.order_id)
+        : null;
+      return successResponse(
+        res,
+        200,
+        { payment: paymentRow, alreadyPaid: true, invoice: existingInvoice },
+        "Payment already settled",
+      );
     }
-    else {
-      await db.update(payment).set({
-        isAccepted: false,
-        description: description,
-        status: "failed",
-      }).where(eq(payment.id, Number(id)));
-    }
-    return successResponse(res, 200, {} , "Payment accepted successfully", );
 
-  }
-  catch (error) {
+    if (gatewayStatus !== "OK") {
+      const [failed] = await db
+        .update(payment)
+        .set({
+          status: "failed",
+          isAccepted: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(payment.id, paymentRow.id))
+        .returning();
+
+      return errorResponse(res, 400, "Payment was not completed", failed);
+    }
+
+    if (!paymentRow.amount) {
+      return errorResponse(res, 400, "Payable amount is missing", null);
+    }
+
+    let verified;
+    try {
+      verified = await verifyZarinpalPayment(paymentRow.amount, authority);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Zarinpal verify failed";
+      return errorResponse(res, 502, message, null);
+    }
+
+    if (!verified.settled) {
+      const [failed] = await db
+        .update(payment)
+        .set({
+          status: "failed",
+          isAccepted: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(payment.id, paymentRow.id))
+        .returning();
+
+      return errorResponse(res, 400, verified.message || "Payment verification failed", failed);
+    }
+
+    const settled = await settleVerifiedPayment(paymentRow.id, verified.refId);
+    return successResponse(res, 200, settled, "Payment settled successfully");
+  } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
-}
+};
