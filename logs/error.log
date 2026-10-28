@@ -111,3 +111,4 @@
 2026-08-04T09:21:27.652Z [ERROR]: Not allowed by CORS - POST /api/graphql
 2026-08-04T09:21:27.796Z [ERROR]: Not allowed by CORS - POST /v1/graphql
 2026-08-04T17:53:42.284Z [ERROR]: Not allowed by CORS - POST /graphql/console
+2026-10-28T17:10:06.890Z [ERROR]: Not allowed by CORS - OPTIONS /api/auth/signin/

@@ -106,7 +106,7 @@ app.use(
 // const allowedOrigins = ["https://my.digitda.de"];
 const allowedOrigins = (
   process.env.ALLOWED_ORIGINS ||
-  "http://localhost:3000,https://my.digitda.de"
+  "http://localhost:3000,https://my.digitda.de,https://fa.digitda.de"
 )
   .split(",")
   .map((o) => o.trim())
