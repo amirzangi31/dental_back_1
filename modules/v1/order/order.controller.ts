@@ -25,6 +25,11 @@ import fs from "fs";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
 import { payment, PaymentStatus } from "../../../db/schema/payment";
+import {
+  ensurePendingPayment,
+  findOrderPayment,
+  isWorkOrderStatus,
+} from "../payment/orderPayment";
 import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
 import { users } from "../../../db/schema/users";
@@ -38,7 +43,6 @@ export const createOrder = async (req: Request, res: Response) => {
       patientage,
       patientgender,
       report,
-      paymentstatus,
       comment,
       file,
       discount,
@@ -162,7 +166,7 @@ export const createOrder = async (req: Request, res: Response) => {
         report: report ? parseInt(report, 10) : null,
         status: "uploadfile" as OrderStatus,
         totalaprice: String(finalTotal),
-        paymentstatus: paymentstatus || false,
+        paymentstatus: false,
         comment: comment || null,
         file: file || null,
         discount: discount ? parseInt(discount, 10) : null,
@@ -269,15 +273,6 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
-    const [createdPayment] = await db
-      .insert(payment)
-      .values({
-        order_id: createdOrder.id,
-        type: "uploadfile",
-        status: "pending",
-      })
-      .returning();
-
     return successResponse(
       res,
       200,
@@ -285,7 +280,7 @@ export const createOrder = async (req: Request, res: Response) => {
         order: createdOrder,
         teeth: finalTeeth,
         teethIds,
-        payment: createdPayment,
+        payment: null,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
         files: attachmentFileRecords,
@@ -876,15 +871,6 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
       }
     }
 
-    const [createdPayment] = await db
-      .insert(payment)
-      .values({
-        order_id: createdOrder.id,
-        type: "uploadfile",
-        status: "pending",
-      })
-      .returning();
-
     return successResponse(
       res,
       200,
@@ -892,7 +878,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         order: createdOrder,
         teeth: finalTeeth,
         teethIds,
-        payment: createdPayment,
+        payment: null,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
         originalOrderId: +id,
@@ -915,7 +901,6 @@ export const updateOrder = async (req: Request, res: Response) => {
       patientgender,
       report,
       status,
-      paymentstatus,
       comment,
       file,
       discount,
@@ -937,6 +922,19 @@ export const updateOrder = async (req: Request, res: Response) => {
         "You are not authorized to update this order",
         null,
       );
+
+    const nextStatus = (status || "uploadfile") as OrderStatus;
+    if (isWorkOrderStatus(nextStatus) && !order[0].paymentstatus) {
+      return errorResponse(
+        res,
+        400,
+        "Order must be paid before this status",
+        null,
+      );
+    }
+    if (nextStatus === "payment" && !order[0].paymentstatus) {
+      await ensurePendingPayment(+id);
+    }
 
     if (!teeth || !Array.isArray(teeth) || teeth.length === 0)
       return errorResponse(
@@ -1027,9 +1025,8 @@ export const updateOrder = async (req: Request, res: Response) => {
         patientage: patientage ? parseInt(patientage, 10) : null,
         patientgender: patientgender || null,
         report: report ? parseInt(report, 10) : null,
-        status: status || "uploadfile",
+        status: nextStatus,
         totalaprice: String(totalPrice),
-        paymentstatus: paymentstatus || false,
         comment,
         file,
         discount: discount ? parseInt(discount, 10) : null,
@@ -1068,16 +1065,12 @@ export const submitOrder = async (req: Request, res: Response) => {
     if (!order.length) return errorResponse(res, 404, "Order not found", null);
     if (order[0].user_id !== user.userId)
       return errorResponse(res, 403, "You are not authorized to submit this order", null);
-    if (order[0].paymentstatus)
-      return errorResponse(res, 400, "Order is already paid", null);
+    if (order[0].status !== "uploadfile")
+      return errorResponse(res, 400, "Order cannot be submitted in this status", null);
 
-    const paymentItem = await db
-      .select()
-      .from(payment)
-      .where(eq(payment.order_id, +id));
-    if (paymentItem.length) {
-      return errorResponse(res, 400, "Payment already exists", null);
-    }
+    const existingPayment = await findOrderPayment(+id);
+    if (order[0].paymentstatus || existingPayment?.status === "paid")
+      return errorResponse(res, 400, "Order is already paid", null);
 
     const uploadedFiles = Array.isArray(req.files) ? (req.files as Express.Multer.File[]) : [];
 
@@ -1108,23 +1101,19 @@ export const submitOrder = async (req: Request, res: Response) => {
       firstFilePath = uploadedFiles[0].path;
     }
 
-    await db.insert(payment).values({
-      order_id: +id,
-      type: "uploadfile",
-      status: "pending",
-    });
+    const paymentRow = await ensurePendingPayment(+id);
 
     await db
       .update(orders)
       .set({
         comment: comment || null,
         file: firstFilePath,
-        status: "design" as OrderStatus,
+        status: "payment" as OrderStatus,
         vip: vip,
       })
       .where(eq(orders.id, +id));
 
-    return successResponse(res, 200, {}, "Order submitted successfully");
+    return successResponse(res, 200, { payment: paymentRow }, "Order submitted successfully");
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
@@ -1533,33 +1522,27 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
     const vipPercent = Number(vipRows[0]?.percent || 0);
     const vipAmount = order.vip ? (basePrice * vipPercent) / 100 : 0;
 
+    const nextStatus = status as OrderStatus;
+    if (isWorkOrderStatus(nextStatus) && !order.paymentstatus) {
+      return errorResponse(
+        res,
+        400,
+        "Order must be paid before this status",
+        null,
+      );
+    }
+    if (nextStatus === "payment" && !order.paymentstatus) {
+      await ensurePendingPayment(+orderId);
+    }
+
     await db
       .update(orders)
       .set({
-        status: status as OrderStatus,
+        status: nextStatus,
         adminFile: adminFileValue,
         totalaprice: String(basePrice + vipAmount),
-        paymentstatus: status !== "uploadfile" ? true : false,
       })
       .where(eq(orders.id, +orderId));
-
-    if (status !== "uploadfile") {
-      await db
-        .update(payment)
-        .set({
-          status: "paid",
-          updatedAt: new Date(),
-        })
-        .where(eq(payment.order_id, +orderId));
-    } else if (status === "uploadfile") {
-      await db
-        .update(payment)
-        .set({
-          status: "pending",
-          updatedAt: new Date(),
-        })
-        .where(eq(payment.order_id, +orderId));
-    }
 
     return successResponse(
       res,
@@ -1606,6 +1589,14 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
       .from(orders)
       .where(eq(orders.id, +orderId));
     if (!order) return errorResponse(res, 404, "Order not found", null);
+    if (!order.paymentstatus) {
+      return errorResponse(
+        res,
+        400,
+        "Order must be paid before uploading a design file",
+        null,
+      );
+    }
 
     await db
       .update(orders)
@@ -1630,7 +1621,6 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
 export const downloadAdminFile = async (req: Request, res: Response) => {
   try {
     const orderId = req.params.id;
-    const { isConfirm } = req.query;
     const user = (req as any).user;
 
     const [order] = await db
@@ -1659,16 +1649,6 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
         null,
       );
     }
-    if(isConfirm === "1"){
-      await db
-      .update(orders)
-      .set({
-        deliveryDate: new Date(),
-        status: "finaldelivery" as OrderStatus,
-      })
-      .where(eq(orders.id, +orderId));
-    }
-
 
     const filePath = path.join(process.cwd(), order.adminFile);
 
@@ -2189,20 +2169,21 @@ export const addOrderToDesigner = async (req: Request, res: Response) => {
       return errorResponse(res, 400, "Designer is deleted", null);
     }
 
+    if (!order.paymentstatus) {
+      return errorResponse(
+        res,
+        400,
+        "Order must be paid before assigning a designer",
+        null,
+      );
+    }
+
     // Assign order to designer
     const [updatedOrder] = await db
       .update(orders)
       .set({ designer_id: +designerId, status: "design" })
       .where(eq(orders.id, +id))
       .returning();
-
-    await db
-      .update(payment)
-      .set({
-        status: "paid",
-        updatedAt: new Date(),
-      })
-      .where(eq(payment.order_id, +id));
 
     return successResponse(
       res,
