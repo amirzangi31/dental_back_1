@@ -6,7 +6,7 @@
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon --watch . --ext ts --exec ts-node server.ts",
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/modules/v1/apiDoc && cp modules/v1/apiDoc/swagger.json dist/modules/v1/apiDoc/",
     "start": "node dist/server.js",
     "start:prod": "NODE_ENV=production node dist/server.js",
     "generate": "npx drizzle-kit generate",

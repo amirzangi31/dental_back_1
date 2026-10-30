@@ -94,3 +94,46 @@ export const updateDesignerSchema = yup.object().shape({
   phoneNumber: yup.string(),
   password: yup.string().min(8, "Password must be at least 8 characters long").optional(),
 });
+
+export const sendPhoneOtpSchema = yup.object().shape({
+  phoneNumber: yup.string().required("Phone number is required"),
+});
+
+export const verifyPhoneOtpSchema = yup.object().shape({
+  phoneNumber: yup.string().required("Phone number is required"),
+  otp: yup.string().required("OTP is required"),
+});
+
+export const otpSignupSchema = yup.object().shape({
+  name: yup.string().required("Name is required"),
+  lastName: yup.string().required("Last name is required"),
+  country: yup.string().required("Country is required"),
+  postalCode: yup.string().required("Postal code is required"),
+  email: yup.string().email("Invalid email address").required("Email is required"),
+  phoneNumber: yup.string().required("Phone number is required"),
+  sessionId: yup.string().required("Session Id is required"),
+  role: yup.string().required("Role is required"),
+  password: yup
+    .string()
+    .min(8, "Password must be at least 8 characters long")
+    .optional(),
+  confirmPassword: yup.string().when("password", {
+    is: (val: string | undefined) => !!val,
+    then: (schema) =>
+      schema
+        .oneOf([yup.ref("password")], "Confirm Password must match Password")
+        .required("Confirm Password is required"),
+    otherwise: (schema) => schema.notRequired(),
+  }),
+  specaility: yup.string().when("role", {
+    is: (val: string) => val === "doctor",
+    then: (schema) => schema.required("Speciality is required for doctors"),
+    otherwise: (schema) => schema.notRequired(),
+  }),
+  laboratoryName: yup.string().when("role", {
+    is: (val: string) => val === "labrator",
+    then: (schema) =>
+      schema.required("Laboratory name is required for labrators"),
+    otherwise: (schema) => schema.notRequired(),
+  }),
+});

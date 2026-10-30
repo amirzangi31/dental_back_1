@@ -6,9 +6,19 @@ import { OAuth2Client } from "google-auth-library";
 import { decode } from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import redis from "../../../config/redis";
+import { isIranRegion } from "../../../config/region";
 import { db } from "../../../db";
 import { users } from "../../../db/schema/users";
+import {
+  consumePhoneSession,
+  createPhoneSession,
+  IpPanelError,
+  normalizeAndValidateIranPhone,
+  sendPhoneOtp,
+  verifyPhoneOtp,
+} from "../../../services/otp/otp.service";
 import { generateAccessToken } from "../../../utils/generateAccessToken";
+import { issueAuthTokens } from "../../../utils/issueAuthTokens";
 import { getPagination } from "../../../utils/pagination";
 import { errorResponse, successResponse } from "../../../utils/responses";
 
@@ -1248,5 +1258,169 @@ export const getByIdDesigner = async (req: Request, res: Response) => {
   } catch (error) {
     console.log(error);
     return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+const findActiveUserByPhone = async (phone: string) => {
+  const rows = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      role: users.role,
+      isDeleted: users.isDeleted,
+      phoneNumber: users.phoneNumber,
+    })
+    .from(users)
+    .where(eq(users.phoneNumber, phone));
+
+  return rows.find((row) => row.isDeleted === 1) || null;
+};
+
+export const sendPhoneOtpHandler = async (req: Request, res: Response) => {
+  try {
+    if (!isIranRegion()) {
+      return errorResponse(res, 403, "OTP_NOT_AVAILABLE_IN_REGION", null);
+    }
+
+    const result = await sendPhoneOtp(req.body.phoneNumber);
+    return successResponse(
+      res,
+      200,
+      result.code ? { otp: result.code } : {},
+      "OTP_SENT_TO_PHONE",
+    );
+  } catch (error: any) {
+    if (error?.message === "INVALID_PHONE_NUMBER") {
+      return errorResponse(res, 400, "INVALID_PHONE_NUMBER", null);
+    }
+    if (error?.message === "OTP_RATE_LIMIT") {
+      return errorResponse(res, 429, "OTP_RATE_LIMIT", null);
+    }
+    if (error instanceof IpPanelError || error?.name === "IpPanelError") {
+      console.error("IPPanel error:", error.message, error.body);
+      return errorResponse(res, 502, "OTP_SMS_SEND_FAILED", null);
+    }
+    console.error(error);
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", error);
+  }
+};
+
+export const verifyPhoneOtpHandler = async (req: Request, res: Response) => {
+  try {
+    if (!isIranRegion()) {
+      return errorResponse(res, 403, "OTP_NOT_AVAILABLE_IN_REGION", null);
+    }
+
+    const { phoneNumber, otp } = req.body;
+    const phone = await verifyPhoneOtp(phoneNumber, otp);
+    const user = await findActiveUserByPhone(phone);
+
+    if (user) {
+      const tokens = await issueAuthTokens(user);
+      return successResponse(
+        res,
+        200,
+        {
+          ...tokens,
+          resultCode: 1100,
+        },
+        "USER_SIGNED_IN",
+      );
+    }
+
+    const sessionId = await createPhoneSession(phone);
+    return successResponse(
+      res,
+      200,
+      {
+        sessionId,
+        phoneNumber: phone,
+        resultCode: 1200,
+      },
+      "PHONE_VERIFIED",
+    );
+  } catch (error: any) {
+    if (error?.message === "INVALID_PHONE_NUMBER") {
+      return errorResponse(res, 400, "INVALID_PHONE_NUMBER", null);
+    }
+    if (error?.message === "OTP_EXPIRED_OR_NOT_FOUND") {
+      return errorResponse(res, 400, "OTP_EXPIRED_OR_NOT_FOUND", null);
+    }
+    if (error?.message === "INVALID_OTP") {
+      return errorResponse(res, 400, "INVALID_OTP", null);
+    }
+    console.error(error);
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", error);
+  }
+};
+
+export const otpSignup = async (req: Request, res: Response) => {
+  try {
+    if (!isIranRegion()) {
+      return errorResponse(res, 403, "OTP_NOT_AVAILABLE_IN_REGION", null);
+    }
+
+    const phone = normalizeAndValidateIranPhone(req.body.phoneNumber);
+    await consumePhoneSession(phone, req.body.sessionId);
+
+    const existingPhone = await findActiveUserByPhone(phone);
+    if (existingPhone) {
+      return errorResponse(res, 400, "PHONE_ALREADY_REGISTERED", null);
+    }
+
+    const existingEmail = await db
+      .select({ id: users.id, isDeleted: users.isDeleted })
+      .from(users)
+      .where(eq(users.email, req.body.email));
+
+    if (existingEmail.some((row) => row.isDeleted === 1)) {
+      return errorResponse(res, 400, "EMAIL_ALREADY_REGISTERED", null);
+    }
+
+    let hashedPassword: string | null = null;
+    if (req.body.password) {
+      hashedPassword = await hash(req.body.password, 10);
+    }
+
+    const inserted = await db
+      .insert(users)
+      .values({
+        email: req.body.email,
+        password: hashedPassword,
+        role: req.body.role,
+        name: req.body.name,
+        lastName: req.body.lastName,
+        country: req.body.country || "Iran",
+        postalCode: req.body.postalCode,
+        phoneNumber: phone,
+        specaility: req.body.specaility,
+        address: req.body.address,
+        laboratoryName: req.body.laboratoryName,
+      })
+      .returning({
+        id: users.id,
+        email: users.email,
+        role: users.role,
+      });
+
+    const tokens = await issueAuthTokens(inserted[0]);
+    return successResponse(
+      res,
+      201,
+      tokens,
+      "USER_SIGNED_UP",
+    );
+  } catch (error: any) {
+    if (error?.message === "INVALID_PHONE_NUMBER") {
+      return errorResponse(res, 400, "INVALID_PHONE_NUMBER", null);
+    }
+    if (error?.message === "SESSION_ID_EXPIRED") {
+      return errorResponse(res, 400, "SESSION_ID_EXPIRED", null);
+    }
+    if (error?.message === "SESSION_ID_INVALID") {
+      return errorResponse(res, 400, "SESSION_ID_INVALID", null);
+    }
+    console.error(error);
+    return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", error);
   }
 };

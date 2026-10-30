@@ -2,11 +2,9 @@ import { configDotenv } from "dotenv";
 import app from "./app";
 import { startCleanupOrdersJob } from "./jobs/cleanupOrders.job";
 
-//* Load ENV
+//* Load ENV (compose/k8s may inject vars; .env still useful for local prod builds)
 const productionMode = process.env.NODE_ENV === "production";
-if (!productionMode) {
-  configDotenv();
-}
+configDotenv();
 
 async function startServer() {
   const port = process.env.PORT || 4002;

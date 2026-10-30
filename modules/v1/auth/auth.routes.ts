@@ -18,6 +18,9 @@ import {
   getDesigners,
   getByIdDesigner,
   getDesignersDropdown,
+  sendPhoneOtpHandler,
+  verifyPhoneOtpHandler,
+  otpSignup,
   } from "./auth.controller";
 import { validate } from "../../../middleware/schemaValidate";
 import {
@@ -32,6 +35,9 @@ import {
   googleSignInSchema,
   createDesignerSchema,
   updateDesignerSchema,
+  sendPhoneOtpSchema,
+  verifyPhoneOtpSchema,
+  otpSignupSchema,
 } from "../../../db/validations/auth";
 import { auth } from "../../../middleware/auth";
 import { isAdmin } from "../../../middleware/isAdmin";
@@ -44,6 +50,9 @@ router.post("/signup", validate(signupSchema), signup);
 router.post("/verifyemail", validate(verifyemailSchema), verifyemail);
 router.post("/refreshtoken",   validate(refreshTokenSchema), refreshToken);
 router.post("/signin",  validate(signinSchema), signin);
+router.post("/otp/send", validate(sendPhoneOtpSchema), sendPhoneOtpHandler);
+router.post("/otp/verify", validate(verifyPhoneOtpSchema), verifyPhoneOtpHandler);
+router.post("/otp/signup", validate(otpSignupSchema), otpSignup);
 router.post("/logout", auth, logout);
 router.get("/user", auth, user); 
 router.put("/updateuser", auth, validate(updateUserSchema), updateUser);

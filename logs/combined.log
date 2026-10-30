@@ -118,3 +118,69 @@
 2026-10-28T16:25:10.954Z [INFO]: GET /api/payment/payments
 2026-10-28T17:10:06.885Z [INFO]: OPTIONS /api/auth/signin/
 2026-10-28T17:10:06.890Z [ERROR]: Not allowed by CORS - OPTIONS /api/auth/signin/
+2026-10-29T05:29:47.959Z [INFO]: GET /
+2026-10-29T05:29:47.962Z [WARN]: 404 Path Not Found: GET /
+2026-10-29T05:29:48.004Z [INFO]: GET /favicon.ico
+2026-10-29T05:29:48.005Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-10-29T05:30:04.935Z [INFO]: GET /docs
+2026-10-29T05:30:04.936Z [WARN]: 404 Path Not Found: GET /docs
+2026-10-29T05:30:04.965Z [INFO]: GET /favicon.ico
+2026-10-29T05:30:04.966Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-10-29T05:30:16.272Z [INFO]: GET /api/docs
+2026-10-29T05:30:16.273Z [WARN]: 404 Path Not Found: GET /api/docs
+2026-10-29T05:30:16.294Z [INFO]: GET /favicon.ico
+2026-10-29T05:30:16.295Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-10-29T05:30:26.540Z [INFO]: GET /swagger
+2026-10-29T05:30:26.540Z [WARN]: 404 Path Not Found: GET /swagger
+2026-10-29T05:30:26.559Z [INFO]: GET /favicon.ico
+2026-10-29T05:30:26.559Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-10-29T05:30:32.624Z [INFO]: GET /api/swagger
+2026-10-29T05:30:32.625Z [WARN]: 404 Path Not Found: GET /api/swagger
+2026-10-29T05:30:32.649Z [INFO]: GET /favicon.ico
+2026-10-29T05:30:32.649Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-10-29T05:31:15.342Z [INFO]: GET /api-docs
+2026-10-29T05:31:15.352Z [INFO]: GET /api-docs/
+2026-10-29T05:31:15.375Z [INFO]: GET /api-docs/swagger-ui.css
+2026-10-29T05:31:15.379Z [INFO]: GET /api-docs/swagger-ui-bundle.js
+2026-10-29T05:31:15.381Z [INFO]: GET /api-docs/swagger-ui-standalone-preset.js
+2026-10-29T05:31:15.382Z [INFO]: GET /api-docs/swagger-ui-init.js
+2026-10-29T05:31:15.393Z [INFO]: GET /api-docs/swagger-ui-init.js
+2026-10-29T05:31:15.394Z [INFO]: GET /api-docs/swagger-ui-standalone-preset.js
+2026-10-29T05:31:15.395Z [INFO]: GET /api-docs/swagger-ui-bundle.js
+2026-10-29T05:33:58.889Z [INFO]: GET /api-docs/swagger-ui-standalone-preset.js
+2026-10-29T05:33:58.893Z [INFO]: GET /api-docs/swagger-ui-init.js
+2026-10-29T05:33:58.899Z [INFO]: GET /api-docs/swagger-ui-bundle.js
+2026-10-29T05:34:49.085Z [INFO]: GET /api/
+2026-10-29T05:34:49.085Z [WARN]: 404 Path Not Found: GET /api/
+2026-10-29T05:34:49.118Z [INFO]: GET /favicon.ico
+2026-10-29T05:34:49.119Z [WARN]: 404 Path Not Found: GET /favicon.ico
+2026-10-29T05:35:21.099Z [INFO]: OPTIONS /api/auth/user/
+2026-10-29T05:35:21.101Z [INFO]: OPTIONS /api/order/orderlist
+2026-10-29T05:35:21.217Z [INFO]: GET /api/auth/user/
+2026-10-29T05:35:21.241Z [INFO]: GET /api/order/orderlist
+2026-10-29T05:35:22.054Z [INFO]: OPTIONS /api/auth/refreshtoken
+2026-10-29T05:35:22.095Z [INFO]: POST /api/auth/refreshtoken
+2026-10-29T05:35:23.205Z [INFO]: GET /api/auth/user/
+2026-10-29T05:35:23.207Z [INFO]: GET /api/order/orderlist
+2026-10-29T05:35:23.210Z [INFO]: POST /api/auth/refreshtoken
+2026-10-29T05:35:25.217Z [INFO]: GET /api/auth/user/
+2026-10-29T05:35:25.219Z [INFO]: GET /api/order/orderlist
+2026-10-29T05:35:25.222Z [INFO]: POST /api/auth/refreshtoken
+2026-10-29T05:35:29.239Z [INFO]: OPTIONS /api/auth/user/
+2026-10-29T05:35:29.242Z [INFO]: OPTIONS /api/order/orderlist
+2026-10-29T05:35:29.243Z [INFO]: GET /api/auth/user/
+2026-10-29T05:35:29.246Z [INFO]: GET /api/order/orderlist
+2026-10-29T05:35:29.251Z [INFO]: OPTIONS /api/auth/refreshtoken
+2026-10-29T05:35:29.253Z [INFO]: POST /api/auth/refreshtoken
+2026-10-29T05:35:35.624Z [INFO]: GET /api/auth/user/
+2026-10-29T05:35:35.627Z [INFO]: GET /api/order/orderlist
+2026-10-29T05:35:36.451Z [INFO]: OPTIONS /api/auth/refreshtoken
+2026-10-29T05:35:36.489Z [INFO]: POST /api/auth/refreshtoken
+2026-10-29T06:00:12.291Z [INFO]: GET /api-docs/
+2026-10-29T06:00:12.388Z [INFO]: GET /api-docs/swagger-ui-bundle.js
+2026-10-29T06:00:12.390Z [INFO]: GET /api-docs/swagger-ui-standalone-preset.js
+2026-10-29T06:00:12.391Z [INFO]: GET /api-docs/swagger-ui-init.js
+2026-10-29T06:00:12.392Z [INFO]: GET /api-docs/swagger-ui.css
+2026-10-29T06:00:12.401Z [INFO]: GET /api-docs/swagger-ui-bundle.js
+2026-10-29T06:00:12.403Z [INFO]: GET /api-docs/swagger-ui-init.js
+2026-10-29T06:00:12.404Z [INFO]: GET /api-docs/swagger-ui-standalone-preset.js

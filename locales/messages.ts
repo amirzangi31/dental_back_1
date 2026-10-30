@@ -930,6 +930,51 @@ export const MESSAGES = {
     en: "Invalid Google token payload",
     de: "Ungültige Google-Token-Nutzlast",
   },
+  OTP_NOT_AVAILABLE_IN_REGION: {
+    fa: "ورود با پیامک در این نسخه در دسترس نیست",
+    en: "SMS OTP is not available in this region",
+    de: "SMS-OTP ist in dieser Region nicht verfügbar",
+  },
+  INVALID_PHONE_NUMBER: {
+    fa: "شماره موبایل نامعتبر است",
+    en: "Invalid phone number",
+    de: "Ungültige Telefonnummer",
+  },
+  OTP_RATE_LIMIT: {
+    fa: "تعداد درخواست‌ها زیاد است. لطفاً کمی بعد دوباره تلاش کنید",
+    en: "Too many OTP requests. Please try again later",
+    de: "Zu viele OTP-Anfragen. Bitte versuchen Sie es später erneut",
+  },
+  OTP_SENT_TO_PHONE: {
+    fa: "کد تأیید به شماره موبایل ارسال شد",
+    en: "OTP sent to phone number",
+    de: "OTP an die Telefonnummer gesendet",
+  },
+  OTP_SMS_SEND_FAILED: {
+    fa: "ارسال پیامک ناموفق بود. لطفاً دوباره تلاش کنید",
+    en: "Failed to send SMS. Please try again",
+    de: "SMS konnte nicht gesendet werden. Bitte erneut versuchen",
+  },
+  PHONE_ALREADY_REGISTERED: {
+    fa: "این شماره موبایل قبلاً ثبت شده است",
+    en: "This phone number is already registered",
+    de: "Diese Telefonnummer ist bereits registriert",
+  },
+  EMAIL_ALREADY_REGISTERED: {
+    fa: "این ایمیل قبلاً ثبت شده است",
+    en: "This email is already registered",
+    de: "Diese E-Mail ist bereits registriert",
+  },
+  USER_SIGNED_UP: {
+    fa: "ثبت‌نام با موفقیت انجام شد",
+    en: "User signed up successfully",
+    de: "Benutzer erfolgreich registriert",
+  },
+  PHONE_VERIFIED: {
+    fa: "شماره موبایل تأیید شد",
+    en: "Phone verified successfully",
+    de: "Telefonnummer erfolgreich verifiziert",
+  },
 } as const satisfies Record<string, LocalizedText>;
 
 export type MessageKey = keyof typeof MESSAGES;

@@ -1,0 +1,14 @@
+node_modules
+dist
+logs
+uploads/*
+order-files/*
+order-pdfs/*
+.git
+.scratch
+.agents
+.cursor
+*.md
+.env
+.env.*
+!drizzle/**
