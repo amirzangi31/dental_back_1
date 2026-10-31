@@ -32,6 +32,10 @@ import { setHeaders } from "./middleware/headers";
 import { errorResponse } from "./utils/responses";
 
 const app = express();
+// nginx + Cloudflare sit in front of this process. Without this,
+// express-rate-limit throws ERR_ERL_UNEXPECTED_X_FORWARDED_FOR and
+// browsers report the failed request as a CORS error.
+app.set("trust proxy", 1);
 
 /* =======================
    WINSTON LOGGER
@@ -131,6 +135,7 @@ const authLimiter = rateLimit({
   message: "Too many requests from this IP, please try again later.",
   standardHeaders: true,
   legacyHeaders: false,
+  validate: { xForwardedForHeader: false },
 });
 app.use("/api/auth", authLimiter);
 

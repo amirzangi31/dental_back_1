@@ -1,6 +1,6 @@
 import { compare, hash } from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
-import { and, asc, count, desc, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { Request, Response } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { decode } from "jsonwebtoken";
@@ -1261,6 +1261,17 @@ export const getByIdDesigner = async (req: Request, res: Response) => {
   }
 };
 
+const phoneLookupVariants = (e164: string): string[] => {
+  const variants = new Set<string>([e164]);
+  if (e164.startsWith("+98")) {
+    const national = e164.slice(3);
+    variants.add(`0${national}`);
+    variants.add(`98${national}`);
+    variants.add(national);
+  }
+  return [...variants];
+};
+
 const findActiveUserByPhone = async (phone: string) => {
   const rows = await db
     .select({
@@ -1271,7 +1282,7 @@ const findActiveUserByPhone = async (phone: string) => {
       phoneNumber: users.phoneNumber,
     })
     .from(users)
-    .where(eq(users.phoneNumber, phone));
+    .where(inArray(users.phoneNumber, phoneLookupVariants(phone)));
 
   return rows.find((row) => row.isDeleted === 1) || null;
 };
@@ -1298,7 +1309,9 @@ export const sendPhoneOtpHandler = async (req: Request, res: Response) => {
     }
     if (error instanceof IpPanelError || error?.name === "IpPanelError") {
       console.error("IPPanel error:", error.message, error.body);
-      return errorResponse(res, 502, "OTP_SMS_SEND_FAILED", null);
+      // Do not use HTTP 502: Cloudflare treats origin 502 as Bad Gateway
+      // and replaces our JSON (and CORS headers) with its own error page.
+      return errorResponse(res, 503, "OTP_SMS_SEND_FAILED", null);
     }
     console.error(error);
     return errorResponse(res, 500, "INTERNAL_SERVER_ERROR", error);

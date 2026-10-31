@@ -53,6 +53,7 @@ export const sendPatternSms = async (params: {
         Authorization: apiKey,
         "Content-Type": "application/json",
       },
+      signal: AbortSignal.timeout(8000),
       body: JSON.stringify({
         sending_type: "pattern",
         from_number: fromNumber,
