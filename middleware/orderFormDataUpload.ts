@@ -5,7 +5,6 @@ import { errorResponse } from "../utils/responses";
 import fs from "fs";
 import { db } from "../db";
 import { files as filesTable } from "../db/schema/files";
-import { isAllowedUploadFile } from "./upload";
 
 const orderFilesDir = "order-files";
 if (!fs.existsSync(orderFilesDir)) {
@@ -18,27 +17,18 @@ const storage = multer.diskStorage({
   },
   filename: (req: Request, file: Express.Multer.File, cb) => {
     const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+    const rawExt = path.extname(file.originalname);
+    const ext = rawExt.replace(/[\\/\0]/g, "").slice(0, 32);
+    const name = path
+      .basename(file.originalname, rawExt)
+      .replace(/[^\w.\- ()\u0600-\u06FF]+/g, "_")
+      .slice(0, 80);
+    cb(null, `${name || "file"}-${uniqueSuffix}${ext}`);
   },
 });
 
-const fileFilter = (
-  req: Request,
-  file: Express.Multer.File,
-  cb: multer.FileFilterCallback
-) => {
-  if (isAllowedUploadFile(file.originalname)) {
-    cb(null, true);
-  } else {
-    cb(new Error("نوع فایل مجاز نیست"));
-  }
-};
-
 const upload = multer({
   storage: storage,
-  fileFilter: fileFilter,
   limits: {
     fileSize: 50 * 1024 * 1024, // 50MB
   },
@@ -137,9 +127,9 @@ export const processOrderFormData = (
               db
                 .insert(filesTable)
                 .values({
-                  filename: path.basename(file.path),
-                  originalname: file.originalname,
-                  mimetype: file.mimetype,
+                  filename: path.basename(file.path).slice(0, 255),
+                  originalname: (file.originalname || path.basename(file.path)).slice(0, 255),
+                  mimetype: (file.mimetype || "application/octet-stream").slice(0, 100),
                   size: file.size,
                   path: file.path,
                   user_id: user?.userId || user?.id || null,
@@ -199,9 +189,9 @@ export const processOrderFormData = (
                   const [fileRecord] = await db
                     .insert(filesTable)
                     .values({
-                      filename: path.basename(file.path),
-                      originalname: file.originalname,
-                      mimetype: file.mimetype,
+                      filename: path.basename(file.path).slice(0, 255),
+                      originalname: (file.originalname || path.basename(file.path)).slice(0, 255),
+                      mimetype: (file.mimetype || "application/octet-stream").slice(0, 100),
                       size: file.size,
                       path: file.path,
                       user_id: user?.userId || user?.id || null,
