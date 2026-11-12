@@ -13,6 +13,7 @@
     "migrate": "npx drizzle-kit migrate",
     "push": "npx drizzle-kit push",
     "create-admin": "ts-node scripts/create-admin.ts",
+    "seed:catalog": "ts-node scripts/seed-catalog.ts",
     "send-welcome-email": "ts-node scripts/send-welcome-email.ts"
   },
   "keywords": [],

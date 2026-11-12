@@ -15,6 +15,7 @@ import {
   IpPanelError,
   normalizeAndValidateIranPhone,
   sendPhoneOtp,
+  consumePhoneOtp,
   verifyPhoneOtp,
 } from "../../../services/otp/otp.service";
 import { generateAccessToken } from "../../../utils/generateAccessToken";
@@ -480,6 +481,10 @@ export const user = async (req: Request, res: Response) => {
         lastName: users.lastName,
         country: users.country,
         postalCode: users.postalCode,
+        nationalCode: users.nationalCode,
+        province: users.province,
+        taxCode: users.taxCode,
+        economicCode: users.economicCode,
         phoneNumber: users.phoneNumber,
         specaility: users.specaility,
         laboratoryName: users.laboratoryName,
@@ -1330,6 +1335,7 @@ export const verifyPhoneOtpHandler = async (req: Request, res: Response) => {
 
     if (user) {
       const tokens = await issueAuthTokens(user);
+      await consumePhoneOtp(phone);
       return successResponse(
         res,
         200,
@@ -1342,6 +1348,7 @@ export const verifyPhoneOtpHandler = async (req: Request, res: Response) => {
     }
 
     const sessionId = await createPhoneSession(phone);
+    await consumePhoneOtp(phone);
     return successResponse(
       res,
       200,
@@ -1404,7 +1411,11 @@ export const otpSignup = async (req: Request, res: Response) => {
         name: req.body.name,
         lastName: req.body.lastName,
         country: req.body.country || "Iran",
-        postalCode: req.body.postalCode,
+        postalCode: null,
+        nationalCode: req.body.nationalCode,
+        province: req.body.province,
+        taxCode: req.body.taxCode || null,
+        economicCode: req.body.economicCode || null,
         phoneNumber: phone,
         specaility: req.body.specaility,
         address: req.body.address,

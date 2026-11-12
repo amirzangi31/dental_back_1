@@ -85,8 +85,12 @@ export const verifyPhoneOtp = async (
     throw new Error("INVALID_OTP");
   }
 
-  await redis.del(otpKey(phone));
   return phone;
+};
+
+/** Drop the code only after login or signup session creation succeeds. */
+export const consumePhoneOtp = async (phone: string): Promise<void> => {
+  await redis.del(otpKey(phone));
 };
 
 export const createPhoneSession = async (phone: string): Promise<string> => {

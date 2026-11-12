@@ -1,4 +1,12 @@
 import * as yup from "yup";
+import { iranProvinceKeys, isValidIranNationalCode } from "../../utils/iranNationalCode";
+
+const optionalDigits = (label: string) =>
+  yup
+    .string()
+    .transform((value) => (typeof value === "string" && value.trim() === "" ? undefined : value))
+    .optional()
+    .matches(/^\d{5,20}$/, `${label} is invalid`);
 
 
 export const sendemailSchema = yup.object().shape({
@@ -108,7 +116,15 @@ export const otpSignupSchema = yup.object().shape({
   name: yup.string().required("Name is required"),
   lastName: yup.string().required("Last name is required"),
   country: yup.string().required("Country is required"),
-  postalCode: yup.string().required("Postal code is required"),
+  nationalCode: yup
+    .string()
+    .required("National code is required")
+    .test("iran-national-code", "National code is invalid", (value) =>
+      value ? isValidIranNationalCode(value) : false,
+    ),
+  province: yup.string().oneOf([...iranProvinceKeys], "Province is required").required("Province is required"),
+  taxCode: optionalDigits("Tax code"),
+  economicCode: optionalDigits("Economic code"),
   email: yup.string().email("Invalid email address").required("Email is required"),
   phoneNumber: yup.string().required("Phone number is required"),
   sessionId: yup.string().required("Session Id is required"),

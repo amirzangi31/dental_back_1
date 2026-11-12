@@ -1,7 +1,8 @@
 import { asc, eq } from "drizzle-orm";
 import { db } from "../../../db";
-import { OrderStatus } from "../../../db/schema/orders";
+import { orders, OrderStatus } from "../../../db/schema/orders";
 import { payment } from "../../../db/schema/payment";
+import { issueInvoiceForSettlement } from "../invoice/issueInvoice";
 
 export const workOrderStatuses: OrderStatus[] = [
   "check",
@@ -60,4 +61,99 @@ export const ensurePendingPayment = async (orderId: number) => {
     .returning();
 
   return updated;
+};
+
+const manualSettlementNote = "تسویه دستی توسط مدیر";
+
+export const settleUnpaidOrderByAdmin = async (
+  orderId: number,
+  paidToman?: number,
+) => {
+  const [order] = await db.select().from(orders).where(eq(orders.id, orderId));
+  if (!order) return null;
+
+  const existing = await findOrderPayment(orderId);
+  if (existing?.status === "paid") {
+    if (!order.paymentstatus) {
+      await db
+        .update(orders)
+        .set({ paymentstatus: true, updatedAt: new Date() })
+        .where(eq(orders.id, orderId));
+    }
+    return existing;
+  }
+
+  const overrideAmount = Math.round(Number(paidToman ?? 0));
+  const amount =
+    Number.isFinite(overrideAmount) && overrideAmount > 0
+      ? overrideAmount
+      : existing?.amount && existing.amount > 0
+        ? existing.amount
+        : tomanAmount(order.totalaprice);
+
+  let paymentId = existing?.id;
+  if (!existing) {
+    const [created] = await db
+      .insert(payment)
+      .values({
+        order_id: orderId,
+        type: "zarinpal",
+        status: "pending",
+        isAccepted: false,
+        amount: amount || null,
+        description: manualSettlementNote,
+      })
+      .returning();
+    paymentId = created?.id;
+  } else {
+    await db
+      .update(payment)
+      .set({
+        amount: amount || existing.amount,
+        description: existing.description ?? manualSettlementNote,
+        updatedAt: new Date(),
+      })
+      .where(eq(payment.id, existing.id));
+  }
+
+  if (!paymentId) return null;
+
+  return db.transaction(async (tx) => {
+    const [current] = await tx
+      .select()
+      .from(payment)
+      .where(eq(payment.id, paymentId))
+      .for("update");
+
+    if (!current) return null;
+    if (current.status === "paid") return current;
+
+    const [updatedPayment] = await tx
+      .update(payment)
+      .set({
+        status: "paid",
+        isAccepted: true,
+        description: current.description ?? manualSettlementNote,
+        updatedAt: new Date(),
+      })
+      .where(eq(payment.id, current.id))
+      .returning();
+
+    await tx
+      .update(orders)
+      .set({
+        paymentstatus: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, orderId));
+
+    await issueInvoiceForSettlement(tx, {
+      orderId,
+      paymentId: current.id,
+      paidToman: current.amount ?? amount ?? 0,
+      trackingCode: null,
+    });
+
+    return updatedPayment;
+  });
 };

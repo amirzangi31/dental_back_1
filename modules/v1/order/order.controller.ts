@@ -29,10 +29,12 @@ import {
   ensurePendingPayment,
   findOrderPayment,
   isWorkOrderStatus,
+  settleUnpaidOrderByAdmin,
 } from "../payment/orderPayment";
 import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
 import { users } from "../../../db/schema/users";
+import { parseDefinedPrice } from "../../../utils/parseDefinedPrice";
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -97,14 +99,11 @@ export const createOrder = async (req: Request, res: Response) => {
           .where(eq(category.id, +t.category))
           .limit(1);
 
-        if (
-          categoryItem &&
-          categoryItem.price &&
-          categoryItem.price !== "0.00"
-        ) {
-          toothPrice += Number(categoryItem.price);
-        } else {
+        const categoryPrice = parseDefinedPrice(categoryItem?.price);
+        if (categoryPrice === null) {
           hasMissingPrice = true;
+        } else {
+          toothPrice += categoryPrice;
         }
       } else {
         hasMissingPrice = true;
@@ -120,14 +119,11 @@ export const createOrder = async (req: Request, res: Response) => {
               .where(eq(material.id, mat.material))
               .limit(1);
 
-            if (
-              materialItem &&
-              materialItem.price &&
-              materialItem.price !== "0.00"
-            ) {
-              toothPrice += Number(materialItem.price);
-            } else {
+            const materialPrice = parseDefinedPrice(materialItem?.price);
+            if (materialPrice === null) {
               hasMissingPrice = true;
+            } else {
+              toothPrice += materialPrice;
             }
           }
         }
@@ -213,7 +209,7 @@ export const createOrder = async (req: Request, res: Response) => {
 
     const finalTeeth = await Promise.all(
       detailedTeeth.map(async (t) => {
-        let toothTotalPrice = Number(t.categoryPrice ?? 0);
+        let toothTotalPrice = parseDefinedPrice(t.categoryPrice) ?? 0;
 
         if (t.materials && Array.isArray(t.materials)) {
           for (const mat of t.materials) {
@@ -224,15 +220,9 @@ export const createOrder = async (req: Request, res: Response) => {
                 .where(eq(material.id, mat.material))
                 .limit(1);
 
-              if (
-                materialItem &&
-                materialItem.price &&
-                materialItem.price !== "0.00"
-              ) {
-                toothTotalPrice += Number(materialItem.price);
-              }else if(materialItem.price === "0.00") {
-                toothTotalPrice = 0;
-                break;
+              const materialPrice = parseDefinedPrice(materialItem?.price);
+              if (materialPrice !== null) {
+                toothTotalPrice += materialPrice;
               }
             }
           }
@@ -361,11 +351,12 @@ export const getOrderWithId = async (req: Request, res: Response) => {
       let materialsTotal = 0;
       let toothHasMissingPrice = false;
 
-      if (toothData.categoryPrice && toothData.categoryPrice !== "0.00") {
-        categoryPriceNum = Number(toothData.categoryPrice);
-      } else {
+      const parsedCategoryPrice = parseDefinedPrice(toothData.categoryPrice);
+      if (parsedCategoryPrice === null) {
         toothHasMissingPrice = true;
         hasMissingPrice = true;
+      } else {
+        categoryPriceNum = parsedCategoryPrice;
       }
 
       // Get materials با جزئیات
@@ -379,10 +370,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
               .where(eq(material.id, mat.material));
 
             if (materialItem) {
-              const materialPrice =
-                materialItem.price !== "0.00"
-                  ? Number(materialItem.price)
-                  : null;
+              const materialPrice = parseDefinedPrice(materialItem.price);
 
               // دریافت مسیر فایل اگر وجود داشته باشد
               let filePath = null;
@@ -434,9 +422,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
               id: toothData.category,
               title: toothData.categoryName,
               color: toothData.colorCode,
-              price: toothData.categoryPrice
-                ? Number(toothData.categoryPrice)
-                : null,
+              price: parseDefinedPrice(toothData.categoryPrice),
             }
           : null,
         categoryName: toothData.categoryName,
@@ -708,12 +694,9 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
           .where(eq(category.id, +t.category))
           .limit(1);
 
-        if (
-          categoryItem &&
-          categoryItem.price &&
-          categoryItem.price !== "0.00"
-        ) {
-          toothPrice += Number(categoryItem.price);
+        const categoryPrice = parseDefinedPrice(categoryItem?.price);
+        if (categoryPrice !== null) {
+          toothPrice += categoryPrice;
         }
       }
 
@@ -726,12 +709,9 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
               .where(eq(material.id, mat.material))
               .limit(1);
 
-            if (
-              materialItem &&
-              materialItem.price &&
-              materialItem.price !== "0.00"
-            ) {
-              toothPrice += Number(materialItem.price);
+            const materialPrice = parseDefinedPrice(materialItem?.price);
+            if (materialPrice !== null) {
+              toothPrice += materialPrice;
             }
           }
         }
@@ -815,7 +795,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
 
     const finalTeeth = await Promise.all(
       detailedTeeth.map(async (t) => {
-        let toothTotalPrice = Number(t.categoryPrice ?? 0);
+        let toothTotalPrice = parseDefinedPrice(t.categoryPrice) ?? 0;
 
         if (t.materials && Array.isArray(t.materials)) {
           for (const mat of t.materials) {
@@ -826,12 +806,9 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
                 .where(eq(material.id, mat.material))
                 .limit(1);
 
-              if (
-                materialItem &&
-                materialItem.price &&
-                materialItem.price !== "0.00"
-              ) {
-                toothTotalPrice += Number(materialItem.price);
+              const materialPrice = parseDefinedPrice(materialItem?.price);
+              if (materialPrice !== null) {
+                toothTotalPrice += materialPrice;
               }
             }
           }
@@ -1518,18 +1495,16 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .limit(1);
 
     const adminFileValue = file ? file.path : (currentOrder?.adminFile || null);
-    const basePrice = Number(totalPrice);
+    const parsedPrice = Number(totalPrice);
+    const basePrice = Number.isFinite(parsedPrice)
+      ? parsedPrice
+      : Number(order.totalaprice || 0);
     const vipPercent = Number(vipRows[0]?.percent || 0);
     const vipAmount = order.vip ? (basePrice * vipPercent) / 100 : 0;
 
     const nextStatus = status as OrderStatus;
     if (isWorkOrderStatus(nextStatus) && !order.paymentstatus) {
-      return errorResponse(
-        res,
-        400,
-        "Order must be paid before this status",
-        null,
-      );
+      await settleUnpaidOrderByAdmin(+orderId, basePrice + vipAmount);
     }
     if (nextStatus === "payment" && !order.paymentstatus) {
       await ensurePendingPayment(+orderId);
@@ -1733,18 +1708,19 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
           .where(eq(category.id, toothData.category));
 
         if (categoryItem) {
+          const categoryPrice = parseDefinedPrice(categoryItem.price);
           toothDetail.categoryDetail = {
             id: categoryItem.id,
             title: categoryItem.title,
             color: categoryItem.color,
-            price: categoryItem.price ? Number(categoryItem.price) : null,
+            price: categoryPrice,
           };
 
-          if (categoryItem.price !== "0.00") {
-            toothDetail.categoryPrice = Number(categoryItem.price);
-          } else {
+          if (categoryPrice === null) {
             toothDetail.hasMissingPrice = true;
             hasMissingPrice = true;
+          } else {
+            toothDetail.categoryPrice = categoryPrice;
           }
         } else {
           toothDetail.hasMissingPrice = true;
@@ -1764,10 +1740,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
               .where(eq(material.id, mat.material));
 
             if (materialItem) {
-              const materialPrice =
-                materialItem.price !== "0.00"
-                  ? Number(materialItem.price)
-                  : null;
+              const materialPrice = parseDefinedPrice(materialItem.price);
               toothDetail.materials.push({
                 id: materialItem.id,
                 title: materialItem.title,
@@ -2169,13 +2142,12 @@ export const addOrderToDesigner = async (req: Request, res: Response) => {
       return errorResponse(res, 400, "Designer is deleted", null);
     }
 
+    if (designer.role !== "designer") {
+      return errorResponse(res, 400, "Selected user is not a designer", null);
+    }
+
     if (!order.paymentstatus) {
-      return errorResponse(
-        res,
-        400,
-        "Order must be paid before assigning a designer",
-        null,
-      );
+      await settleUnpaidOrderByAdmin(+id);
     }
 
     // Assign order to designer

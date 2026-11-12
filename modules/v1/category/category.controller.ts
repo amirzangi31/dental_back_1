@@ -8,6 +8,29 @@ import { catalog } from "../../../db/schema/catalog";
 import { color } from "../../../db/schema/color";
 import { getPagination } from "../../../utils/pagination";
 
+const optionalText = (value: unknown): string | null => {
+  if (value === undefined || value === null) return null;
+  const text = String(value).trim();
+  if (text === "" || text === "null" || text === "undefined") return null;
+  return text;
+};
+
+const optionalId = (value: unknown): number | null => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === "" ||
+    value === "null" ||
+    value === "undefined" ||
+    value === 0 ||
+    value === "0"
+  ) {
+    return null;
+  }
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
 export const getCategory = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
@@ -103,11 +126,11 @@ export const createCategory = async (req: Request, res: Response) => {
       .insert(category)
       .values({
         title,
-        description,
+        description: optionalText(description),
         price: price ? String(price) : null,
-        catalog: catalog ? parseInt(catalog) : null,
+        catalog: optionalId(catalog),
         file: file.path,
-        color: color ? parseInt(color) : null,
+        color: optionalId(color),
       })
       .returning();
 
@@ -129,10 +152,10 @@ export const updateCategory = async (req: Request, res: Response) => {
 
     const updateData: any = {};
     if (title) updateData.title = title;
-    if (description) updateData.description = description;
+    if ("description" in req.body) updateData.description = optionalText(description);
     if (price) updateData.price = String(price);
-    if (catalog) updateData.catalog = parseInt(catalog);
-    if (color) updateData.color = parseInt(color);
+    if ("catalog" in req.body) updateData.catalog = optionalId(catalog);
+    if ("color" in req.body) updateData.color = optionalId(color);
     if (file) {
       await db.insert(files).values({
         filename: file.filename,

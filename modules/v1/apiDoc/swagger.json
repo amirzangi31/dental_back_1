@@ -140,6 +140,43 @@
         }
       }
     },
+    "/api/auth/otp/signup": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Complete Iran phone signup",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "name": { "type": "string" },
+                  "lastName": { "type": "string" },
+                  "country": { "type": "string" },
+                  "nationalCode": { "type": "string", "description": "Iranian national ID, 10 digits, required" },
+                  "province": { "type": "string", "description": "Iran province key, required" },
+                  "taxCode": { "type": "string", "description": "Optional tax code" },
+                  "economicCode": { "type": "string", "description": "Optional economic code" },
+                  "email": { "type": "string" },
+                  "phoneNumber": { "type": "string" },
+                  "sessionId": { "type": "string" },
+                  "role": { "type": "string", "enum": ["doctor", "labrator"] },
+                  "specaility": { "type": "string", "description": "Required when role is doctor" },
+                  "laboratoryName": { "type": "string", "description": "Required when role is labrator" }
+                },
+                "required": ["name", "lastName", "country", "nationalCode", "province", "email", "phoneNumber", "sessionId", "role"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "signup success"
+          }
+        }
+      }
+    },
     "/api/auth/sendemail": {
       "post": {
         "tags": ["Auth"],
