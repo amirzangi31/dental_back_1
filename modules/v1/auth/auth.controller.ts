@@ -987,6 +987,23 @@ export const createDesigner = async (req: Request, res: Response) => {
       return errorResponse(res, 400, "Email already exists", null);
     }
 
+    let normalizedPhone: string | null;
+    try {
+      normalizedPhone = resolveDesignerPhone(phoneNumber);
+    } catch (error: any) {
+      if (error?.message === "INVALID_PHONE_NUMBER") {
+        return errorResponse(res, 400, "INVALID_PHONE_NUMBER", null);
+      }
+      throw error;
+    }
+
+    if (normalizedPhone) {
+      const existingPhone = await findActiveUserByPhone(normalizedPhone);
+      if (existingPhone) {
+        return errorResponse(res, 400, "PHONE_ALREADY_REGISTERED", null);
+      }
+    }
+
     const hashedPassword = await hash(password, 10);
 
     const newDesigner = await db
@@ -998,7 +1015,7 @@ export const createDesigner = async (req: Request, res: Response) => {
         password: hashedPassword,
         country,
         postalCode,
-        phoneNumber: phoneNumber || null,
+        phoneNumber: normalizedPhone,
         role: "designer",
       })
       .returning({
@@ -1063,13 +1080,30 @@ export const updateDesigner = async (req: Request, res: Response) => {
       }
     }
 
+    let normalizedPhone: string | null;
+    try {
+      normalizedPhone = resolveDesignerPhone(phoneNumber);
+    } catch (error: any) {
+      if (error?.message === "INVALID_PHONE_NUMBER") {
+        return errorResponse(res, 400, "INVALID_PHONE_NUMBER", null);
+      }
+      throw error;
+    }
+
+    if (normalizedPhone) {
+      const existingPhone = await findActiveUserByPhone(normalizedPhone);
+      if (existingPhone && existingPhone.id !== Number(id)) {
+        return errorResponse(res, 400, "PHONE_ALREADY_REGISTERED", null);
+      }
+    }
+
     const updateData: any = {
       name,
       lastName,
       email,
       country,
       postalCode,
-      phoneNumber: phoneNumber || null,
+      phoneNumber: normalizedPhone,
       updatedAt: new Date(),
     };
 
@@ -1277,19 +1311,56 @@ const phoneLookupVariants = (e164: string): string[] => {
   return [...variants];
 };
 
+const iranPhoneKey = (value: string): string | null => {
+  const digits = value.replace(/\D/g, "");
+  if (!digits) return null;
+  let national = digits;
+  if (national.startsWith("98") && national.length >= 12) {
+    national = national.slice(2);
+  }
+  if (national.startsWith("0")) national = national.slice(1);
+  return national || null;
+};
+
 const findActiveUserByPhone = async (phone: string) => {
+  const phoneFields = {
+    id: users.id,
+    email: users.email,
+    role: users.role,
+    isDeleted: users.isDeleted,
+    phoneNumber: users.phoneNumber,
+  };
   const rows = await db
-    .select({
-      id: users.id,
-      email: users.email,
-      role: users.role,
-      isDeleted: users.isDeleted,
-      phoneNumber: users.phoneNumber,
-    })
+    .select(phoneFields)
     .from(users)
     .where(inArray(users.phoneNumber, phoneLookupVariants(phone)));
 
-  return rows.find((row) => row.isDeleted === 1) || null;
+  const direct = rows.find((row) => row.isDeleted === 1);
+  if (direct) return direct;
+
+  const target = iranPhoneKey(phone);
+  if (!target) return null;
+
+  const candidates = await db
+    .select(phoneFields)
+    .from(users)
+    .where(eq(users.isDeleted, 1));
+
+  return (
+    candidates.find(
+      (row) => row.phoneNumber && iranPhoneKey(row.phoneNumber) === target,
+    ) || null
+  );
+};
+
+const resolveDesignerPhone = (raw: string | null | undefined): string | null => {
+  const value = (raw || "").trim();
+  if (!value) {
+    if (isIranRegion()) throw new Error("INVALID_PHONE_NUMBER");
+    return null;
+  }
+  if (isIranRegion()) return normalizeAndValidateIranPhone(value);
+  return value;
 };
 
 export const sendPhoneOtpHandler = async (req: Request, res: Response) => {
