@@ -1084,7 +1084,8 @@ export const submitOrder = async (req: Request, res: Response) => {
       .update(orders)
       .set({
         comment: comment || null,
-        file: firstFilePath,
+        // ثبت برای پرداخت فایل جدیدی نمی‌فرستد؛ مسیر فایل قبلی را پاک نکن
+        file: firstFilePath ?? order[0].file,
         status: "payment" as OrderStatus,
         vip: vip,
       })
