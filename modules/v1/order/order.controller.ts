@@ -466,7 +466,11 @@ export const getOrderWithId = async (req: Request, res: Response) => {
       res,
       200,
       {
-        order: order,
+        order: {
+          ...order,
+          connections: order.connections ?? [],
+          antagonists: order.antagonists ?? [],
+        },
         teeth: teethDetails,
         summary: {
           subtotal: finalSubtotal,
