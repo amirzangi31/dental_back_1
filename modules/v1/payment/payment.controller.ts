@@ -419,13 +419,29 @@ export const startZarinpalPayment = async (req: Request, res: Response) => {
   }
 };
 
+const DEFAULT_APP_URL = "https://app.digitda.ir/";
+
+function appReturnUrl(): string {
+  const configured = process.env.PAYMENT_RETURN_URL?.trim();
+  if (!configured) return DEFAULT_APP_URL;
+  try {
+    const url = new URL(configured);
+    if (url.protocol !== "https:" && url.protocol !== "http:") return DEFAULT_APP_URL;
+    return url.toString();
+  } catch {
+    return DEFAULT_APP_URL;
+  }
+}
+
 export const zarinpalCallback = async (req: Request, res: Response) => {
+  const returnToApp = () => res.redirect(302, appReturnUrl());
+
   try {
     const authority = String(req.query.Authority || req.query.authority || "");
     const gatewayStatus = String(req.query.Status || req.query.status || "");
 
     if (!authority) {
-      return errorResponse(res, 400, "Authority is required", null);
+      return returnToApp();
     }
 
     const [paymentRow] = await db
@@ -434,64 +450,53 @@ export const zarinpalCallback = async (req: Request, res: Response) => {
       .where(eq(payment.authority, authority));
 
     if (!paymentRow) {
-      return errorResponse(res, 404, "Payment not found", null);
+      return returnToApp();
     }
 
     if (paymentRow.status === "paid") {
-      const existingInvoice = paymentRow.order_id
-        ? await readInvoiceByOrderId(paymentRow.order_id)
-        : null;
-      return successResponse(
-        res,
-        200,
-        { payment: paymentRow, alreadyPaid: true, invoice: existingInvoice },
-        "Payment already settled",
-      );
+      return returnToApp();
     }
 
     if (gatewayStatus !== "OK") {
-      const [failed] = await db
+      await db
         .update(payment)
         .set({
           status: "failed",
           isAccepted: false,
           updatedAt: new Date(),
         })
-        .where(eq(payment.id, paymentRow.id))
-        .returning();
+        .where(eq(payment.id, paymentRow.id));
 
-      return errorResponse(res, 400, "Payment was not completed", failed);
+      return returnToApp();
     }
 
     if (!paymentRow.amount) {
-      return errorResponse(res, 400, "Payable amount is missing", null);
+      return returnToApp();
     }
 
     let verified;
     try {
       verified = await verifyZarinpalPayment(paymentRow.amount, authority);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Zarinpal verify failed";
-      return errorResponse(res, 502, message, null);
+    } catch {
+      return returnToApp();
     }
 
     if (!verified.settled) {
-      const [failed] = await db
+      await db
         .update(payment)
         .set({
           status: "failed",
           isAccepted: false,
           updatedAt: new Date(),
         })
-        .where(eq(payment.id, paymentRow.id))
-        .returning();
+        .where(eq(payment.id, paymentRow.id));
 
-      return errorResponse(res, 400, verified.message || "Payment verification failed", failed);
+      return returnToApp();
     }
 
-    const settled = await settleVerifiedPayment(paymentRow.id, verified.refId);
-    return successResponse(res, 200, settled, "Payment settled successfully");
-  } catch (error) {
-    return errorResponse(res, 500, "Internal server error", error);
+    await settleVerifiedPayment(paymentRow.id, verified.refId);
+    return returnToApp();
+  } catch {
+    return returnToApp();
   }
 };
