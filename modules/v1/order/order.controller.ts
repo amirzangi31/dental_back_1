@@ -1616,7 +1616,11 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
     const user = (req as any).user;
 
     const [order] = await db
-      .select({ adminFile: orders.adminFile, user_id: orders.user_id })
+      .select({
+        adminFile: orders.adminFile,
+        user_id: orders.user_id,
+        status: orders.status,
+      })
       .from(orders)
       .where(eq(orders.id, +orderId));
 
@@ -1631,6 +1635,28 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
         "You are not authorized to download this file",
         null,
       );
+    }
+
+    if (req.query.isConfirm === "1") {
+      if (order.status !== "approval") {
+        return errorResponse(
+          res,
+          400,
+          "Order is not waiting for delivery confirmation",
+          null,
+        );
+      }
+
+      await db
+        .update(orders)
+        .set({
+          status: "finaldelivery" as OrderStatus,
+          deliveryDate: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, +orderId));
+
+      return successResponse(res, 200, { id: +orderId }, "Delivery confirmed");
     }
 
     if (!order.adminFile) {
