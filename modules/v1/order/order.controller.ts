@@ -44,6 +44,13 @@ const optionalForeignKey = (value: unknown): number | null => {
   return parsed;
 };
 
+const isRedesignFlag = (value: unknown) =>
+  value === true || value === "true" || value === "1" || value === 1;
+
+// A redesign is half the catalog price. VIP and tax are applied after that cut.
+const redesignPrice = (price: number, isRedesign: boolean) =>
+  isRedesign ? price / 2 : price;
+
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -348,6 +355,8 @@ export const getOrderWithId = async (req: Request, res: Response) => {
 
     const [vipItem] = await db.select().from(vip);
     const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
+    const isRedesignQuote =
+      order.refrence != null || isRedesignFlag(req.query.redesign);
 
     // ساخت خروجی مشابه ToothType interface
     const teethDetails: any[] = [];
@@ -365,7 +374,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         toothHasMissingPrice = true;
         hasMissingPrice = true;
       } else {
-        categoryPriceNum = parsedCategoryPrice;
+        categoryPriceNum = redesignPrice(parsedCategoryPrice, isRedesignQuote);
       }
 
       // Get materials با جزئیات
@@ -379,7 +388,11 @@ export const getOrderWithId = async (req: Request, res: Response) => {
               .where(eq(material.id, mat.material));
 
             if (materialItem) {
-              const materialPrice = parseDefinedPrice(materialItem.price);
+              const parsedMaterialPrice = parseDefinedPrice(materialItem.price);
+              const materialPrice =
+                parsedMaterialPrice === null
+                  ? null
+                  : redesignPrice(parsedMaterialPrice, isRedesignQuote);
 
               // دریافت مسیر فایل اگر وجود داشته باشد
               let filePath = null;
@@ -431,7 +444,10 @@ export const getOrderWithId = async (req: Request, res: Response) => {
               id: toothData.category,
               title: toothData.categoryName,
               color: toothData.colorCode,
-              price: parseDefinedPrice(toothData.categoryPrice),
+              price:
+                parsedCategoryPrice === null
+                  ? null
+                  : redesignPrice(parsedCategoryPrice, isRedesignQuote),
             }
           : null,
         categoryName: toothData.categoryName,
@@ -739,11 +755,10 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const [vipItem] = await db.select().from(vip);
     const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
 
-    const halfPrice = totalPrice / 2;
-
+    const billablePrice = redesignPrice(totalPrice, true);
     const isVip = vipParametr === "true" || vipParametr === true;
-    const vipAmount = isVip ? (halfPrice * vipPercent) / 100 : 0;
-    const totalBeforeTax = halfPrice + vipAmount;
+    const vipAmount = isVip ? (billablePrice * vipPercent) / 100 : 0;
+    const totalBeforeTax = billablePrice + vipAmount;
     const taxAmount = (totalBeforeTax * taxPercent) / 100;
     const finalTotal = totalBeforeTax + taxAmount;
 
@@ -832,7 +847,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
 
         return {
           ...t,
-          price: toothTotalPrice,
+          price: redesignPrice(toothTotalPrice, true),
         };
       }),
     );
@@ -1721,7 +1736,8 @@ const isWithinVipHours = (
 
 export const calculateOrderPrice = async (req: Request, res: Response) => {
   try {
-    const { teeth, vip: vipParametr } = req.body;
+    const { teeth, vip: vipParametr, redesign } = req.body;
+    const isRedesignQuote = isRedesignFlag(redesign);
     if (!teeth || !Array.isArray(teeth)) {
       return errorResponse(res, 400, "Invalid order data", null);
     }
@@ -1776,7 +1792,16 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
             toothDetail.hasMissingPrice = true;
             hasMissingPrice = true;
           } else {
-            toothDetail.categoryPrice = categoryPrice;
+            toothDetail.categoryPrice = redesignPrice(
+              categoryPrice,
+              isRedesignQuote,
+            );
+          }
+          if (toothDetail.categoryDetail) {
+            toothDetail.categoryDetail.price =
+              categoryPrice === null
+                ? null
+                : redesignPrice(categoryPrice, isRedesignQuote);
           }
         } else {
           toothDetail.hasMissingPrice = true;
@@ -1796,7 +1821,11 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
               .where(eq(material.id, mat.material));
 
             if (materialItem) {
-              const materialPrice = parseDefinedPrice(materialItem.price);
+              const parsedMaterialPrice = parseDefinedPrice(materialItem.price);
+              const materialPrice =
+                parsedMaterialPrice === null
+                  ? null
+                  : redesignPrice(parsedMaterialPrice, isRedesignQuote);
               toothDetail.materials.push({
                 id: materialItem.id,
                 title: materialItem.title,
