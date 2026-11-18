@@ -35,6 +35,15 @@ import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
 import { users } from "../../../db/schema/users";
 import { parseDefinedPrice } from "../../../utils/parseDefinedPrice";
+
+// The order form sends 0 when no shade or device was chosen. 0 is not a row id.
+const optionalForeignKey = (value: unknown): number | null => {
+  if (value === undefined || value === null || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
+};
+
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -662,15 +671,15 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         }));
       }
 
-      // device و materialshade: اگر جدید نیامده از قدیمی استفاده کن
+      // 0 means "not selected". A missing field keeps the original order's value.
       const deviceValue =
-        t.device !== undefined && t.device !== null
-          ? +t.device
-          : originalTooth?.device || null;
+        t.device === undefined || t.device === null
+          ? optionalForeignKey(originalTooth?.device)
+          : optionalForeignKey(t.device);
       const materialshadeValue =
-        t.materialshade !== undefined && t.materialshade !== null
-          ? +t.materialshade
-          : originalTooth?.materialshade || null;
+        t.materialshade === undefined || t.materialshade === null
+          ? optionalForeignKey(originalTooth?.materialshade)
+          : optionalForeignKey(t.materialshade);
 
       return {
         toothnumber: +t.toothnumber || null,
@@ -734,41 +743,44 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const taxAmount = (totalBeforeTax * taxPercent) / 100;
     const finalTotal = totalBeforeTax + taxAmount;
 
-    const [createdOrder]: any = await db
-      .insert(orders)
-      .values({
-        title: title || originalOrder.title || null,
-        user_id: user.userId,
-        patientname: patientname || originalOrder.patientname || null,
-        patientage: patientage
-          ? parseInt(patientage, 10)
-          : originalOrder.patientage || null,
-        patientgender: patientgender || originalOrder.patientgender || null,
-        report: null,
-        status: "uploadfile" as OrderStatus,
-        totalaprice: String(finalTotal),
-        paymentstatus: false,
-        comment: comment || null,
-        // اگر فایل جدید نیامده، از فایل order اصلی استفاده کن
-        file: file || originalOrder.file || null,
-        discount: discount
-          ? parseInt(discount, 10)
-          : originalOrder.discount || null,
-        vip: vipParametr === "true" || vipParametr === true || false,
-        connections: originalOrder.connections || [],
-        antagonists: originalOrder.antagonists || [],
-        refrence: +id,
-      })
-      .returning();
+    const { createdOrder, createdTeeth } = await db.transaction(async (tx) => {
+      const [orderRow]: any = await tx
+        .insert(orders)
+        .values({
+          title: title || originalOrder.title || null,
+          user_id: user.userId,
+          patientname: patientname || originalOrder.patientname || null,
+          patientage: patientage
+            ? parseInt(patientage, 10)
+            : originalOrder.patientage || null,
+          patientgender: patientgender || originalOrder.patientgender || null,
+          report: null,
+          status: "uploadfile" as OrderStatus,
+          totalaprice: String(finalTotal),
+          paymentstatus: false,
+          comment: comment || null,
+          // اگر فایل جدید نیامده، از فایل order اصلی استفاده کن
+          file: file || originalOrder.file || null,
+          discount: discount
+            ? parseInt(discount, 10)
+            : originalOrder.discount || null,
+          vip: vipParametr === "true" || vipParametr === true || false,
+          connections: originalOrder.connections || [],
+          antagonists: originalOrder.antagonists || [],
+          refrence: +id,
+        })
+        .returning();
 
-    const createdTeeth = await db.insert(tooth).values(teethValues).returning();
+      const teethRows = await tx.insert(tooth).values(teethValues).returning();
 
-    const orderTeethData = createdTeeth.map((t) => ({
-      orderId: createdOrder.id,
-      toothId: t.id,
-    }));
-    if (orderTeethData.length)
-      await db.insert(orderTeeth).values(orderTeethData);
+      const orderTeethData = teethRows.map((t) => ({
+        orderId: orderRow.id,
+        toothId: t.id,
+      }));
+      if (orderTeethData.length) await tx.insert(orderTeeth).values(orderTeethData);
+
+      return { createdOrder: orderRow, createdTeeth: teethRows };
+    });
 
     const teethIds = createdTeeth.map((t) => t.id);
 
@@ -1645,15 +1657,28 @@ const timeToSeconds = (time: string) => {
   return Number(h) * 3600 + Number(m) * 60 + Number(s);
 };
 
+const tehranClockSeconds = (date = new Date()) => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Tehran",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const read = (type: Intl.DateTimeFormatPartTypes) => {
+    const value = Number(parts.find((part) => part.type === type)?.value ?? "0");
+    return Number.isFinite(value) ? value % 24 : 0;
+  };
+  return read("hour") * 3600 + read("minute") * 60 + read("second");
+};
+
 const isWithinVipHours = (
   startTime?: string | null,
   endTime?: string | null,
 ) => {
   if (!startTime || !endTime) return false;
 
-  const now = new Date();
-  const current =
-    now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+  const current = tehranClockSeconds();
   const start = timeToSeconds(startTime);
   const end = timeToSeconds(endTime);
 
