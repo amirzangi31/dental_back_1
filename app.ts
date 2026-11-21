@@ -24,6 +24,7 @@ import taxRoutes from "./modules/v1/tax/tax.routes";
 import ticketRoutes from "./modules/v1/tickets/ticket.routes";
 import paymentRoutes from "./modules/v1/payment/payment.routes";
 import invoiceRoutes from "./modules/v1/invoice/invoice.routes";
+import discountCodeRoutes from "./modules/v1/discountCode/discountCode.routes";
 import materialRoutes from "./modules/v1/material/material.route";
 import materialCategoryRoutes from "./modules/v1/materialcategory/materialcategory.route";
 
@@ -203,6 +204,7 @@ app.use("/api/vip", vipRoutes);
 app.use("/api/tax", taxRoutes);
 app.use("/api/payment", paymentRoutes);
 app.use("/api/invoice", invoiceRoutes);
+app.use("/api/discount-code", discountCodeRoutes);
 
 /* =======================
    404 HANDLER

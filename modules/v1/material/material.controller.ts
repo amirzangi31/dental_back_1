@@ -3,11 +3,15 @@ import { db } from "../../../db";
 import { material } from "../../../db/schema/material";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
+import { combineFilters, idQuery, matchesText, readQuery, searchText } from "../../../utils/listQuery";
 import { files } from "../../../db/schema/files";
 import { getPagination } from "../../../utils/pagination";
 import { color } from "../../../db/schema/color";
 import { materialcategory } from "../../../db/schema/materialcategory";
 import { category } from "../../../db/schema/category";
+
+const parseInputRequired = (value: unknown): boolean =>
+  value === true || value === "true" || value === "1" || value === 1;
 
 // Create Material
 export const createMaterial = async (req: Request, res: Response) => {
@@ -21,6 +25,7 @@ export const createMaterial = async (req: Request, res: Response) => {
       category,
       descriptionStatus,
       materialcategory,
+      inputRequired,
     } = req.body;
     const file = req.file;
 
@@ -48,6 +53,10 @@ export const createMaterial = async (req: Request, res: Response) => {
           ? parseInt(color)
           : null,
       descriptionStatus: descriptionStatus ? descriptionStatus : "none",
+      inputRequired:
+        descriptionStatus && descriptionStatus !== "none"
+          ? parseInputRequired(inputRequired)
+          : false,
       materialcategory:
         materialcategory &&
         materialcategory !== "null" &&
@@ -85,15 +94,32 @@ export const createMaterial = async (req: Request, res: Response) => {
 export const getMaterials = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const categoryFilter = idQuery(readQuery(req, "category"), material.category, "category");
+    if (!categoryFilter.ok) return errorResponse(res, 400, categoryFilter.error, null);
+    const materialCategoryFilter = idQuery(
+      readQuery(req, "materialcategory"),
+      material.materialcategory,
+      "material category",
+    );
+    if (!materialCategoryFilter.ok) {
+      return errorResponse(res, 400, materialCategoryFilter.error, null);
+    }
+    const whereClause = combineFilters(
+      eq(material.isDeleted, 0),
+      categoryFilter.clause,
+      materialCategoryFilter.clause,
+      matchesText(searchText(req), [material.id, material.title, material.description]),
+    );
     const orderByClause =
       sort === "asc" ? asc(material.createdAt) : desc(material.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(material);
+    const [{ total }] = await db.select({ total: count() }).from(material).where(whereClause);
     const materials = await db
       .select({
         id: material.id,
         title: material.title,
         price: material.price,
         descriptionStatus: material.descriptionStatus,
+        inputRequired: material.inputRequired,
         description: material.description,
         materialcategory: material.materialcategory,
         parent_id: material.parent_id,
@@ -111,7 +137,7 @@ export const getMaterials = async (req: Request, res: Response) => {
       .from(material)
       .leftJoin(color, eq(material.color, color.id))
       .leftJoin(category, eq(material.category, category.id))
-      .where(eq(material.isDeleted, 0))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);  
@@ -139,7 +165,11 @@ export const getMaterialDropDown = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(material.createdAt) : desc(material.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(material);
+    const whereClause = combineFilters(
+      eq(material.isDeleted, 0),
+      matchesText(searchText(req), [material.id, material.title]),
+    );
+    const [{ total }] = await db.select({ total: count() }).from(material).where(whereClause);
 
     const materials = await db
       .select({
@@ -147,7 +177,7 @@ export const getMaterialDropDown = async (req: Request, res: Response) => {
         title: material.title,
       })
       .from(material)
-      .where(eq(material.isDeleted, 0))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -192,6 +222,7 @@ export const getMaterialByCategory = async (req: Request, res: Response) => {
         category: material.category,
         description: material.description,
         descriptionStatus: material.descriptionStatus,
+        inputRequired: material.inputRequired,
         materialcategoryId: material.materialcategory,
         materialcategoryTitle: materialcategory.title,
       })
@@ -202,7 +233,11 @@ export const getMaterialByCategory = async (req: Request, res: Response) => {
         eq(material.materialcategory, materialcategory.id),
       )
       .where(
-        and(eq(material.category, categoryNumber), eq(material.isDeleted, 0)),
+        combineFilters(
+          eq(material.category, categoryNumber),
+          eq(material.isDeleted, 0),
+          matchesText(searchText(req), [material.id, material.title, material.description]),
+        ),
       )
       .orderBy(orderByClause);
 
@@ -351,6 +386,10 @@ export const updateMaterial = async (req: Request, res: Response) => {
       descriptionStatus: req.body.descriptionStatus
         ? req.body.descriptionStatus
         : "none",
+      inputRequired:
+        req.body.descriptionStatus && req.body.descriptionStatus !== "none"
+          ? parseInputRequired(req.body.inputRequired)
+          : false,
       materialcategory:
         req.body.materialcategory &&
         req.body.materialcategory !== "null" &&

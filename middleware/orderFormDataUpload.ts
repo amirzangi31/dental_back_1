@@ -3,6 +3,7 @@ import path from "path";
 import { Request, Response, NextFunction } from "express";
 import { errorResponse } from "../utils/responses";
 import fs from "fs";
+import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { files as filesTable } from "../db/schema/files";
 
@@ -33,6 +34,53 @@ const upload = multer({
     fileSize: 50 * 1024 * 1024, // 50MB
   },
 });
+
+const handleUploadError = (err: unknown, res: Response) => {
+  if (err instanceof multer.MulterError) {
+    if (err.code === "LIMIT_FILE_SIZE") {
+      return errorResponse(res, 400, "حجم فایل بیش از حد مجاز است (حداکثر 50MB)", null);
+    }
+    return errorResponse(res, 400, "خطا در آپلود فایل", err);
+  }
+  const message = err instanceof Error ? err.message : "خطا در آپلود فایل";
+  return errorResponse(res, 400, message || "خطا در آپلود فایل", err);
+};
+
+export const uploadSingleOrderFile = (req: Request, res: Response, next: NextFunction) => {
+  upload.single("file")(req, res, (err) => {
+    if (err) return handleUploadError(err, res);
+    if (req.file?.path) {
+      req.file.path = req.file.path.replace(/\\/g, "/");
+    }
+    next();
+  });
+};
+
+const attachPresetFileIds = async (req: Request, res: Response, orderData: any) => {
+  const rawIds = Array.isArray(orderData?.attachmentIds) ? orderData.attachmentIds : [];
+  const presetIds = rawIds
+    .map((id: unknown) => Number(id))
+    .filter((id: number) => Number.isInteger(id) && id > 0);
+
+  if (presetIds.length === 0) return true;
+
+  const user = (req as any).user;
+  const userId = user?.userId || user?.id;
+  const owned = await db
+    .select({ id: filesTable.id })
+    .from(filesTable)
+    .where(
+      and(inArray(filesTable.id, presetIds), eq(filesTable.user_id, userId), eq(filesTable.isDeleted, 0))
+    );
+  if (owned.length !== presetIds.length) {
+    errorResponse(res, 400, "فایل پیوست معتبر نیست", null);
+    return false;
+  }
+  const current: number[] = (req as any).attachmentFileIds ?? [];
+  (req as any).attachmentFileIds = Array.from(new Set([...current, ...owned.map((row) => row.id)]));
+  delete orderData.attachmentIds;
+  return true;
+};
 
 
 export const processOrderFormData = (
@@ -233,8 +281,10 @@ export const processOrderFormData = (
         }
       }
 
+      const attachmentsAccepted = await attachPresetFileIds(req, res, orderData);
+      if (!attachmentsAccepted) return;
       req.body = orderData;
-      
+
       next();
     } catch (parseError) {
       console.error("Error parsing order data:", parseError);

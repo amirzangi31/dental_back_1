@@ -45,3 +45,46 @@ export const iranProvinceKeys = [
   "hamadan",
   "yazd",
 ] as const;
+
+const iranProvinceFa: Record<(typeof iranProvinceKeys)[number], string> = {
+  "east-azerbaijan": "آذربایجان شرقی",
+  "west-azerbaijan": "آذربایجان غربی",
+  ardabil: "اردبیل",
+  isfahan: "اصفهان",
+  alborz: "البرز",
+  ilam: "ایلام",
+  bushehr: "بوشهر",
+  tehran: "تهران",
+  chaharmahal: "چهارمحال و بختیاری",
+  "south-khorasan": "خراسان جنوبی",
+  "razavi-khorasan": "خراسان رضوی",
+  "north-khorasan": "خراسان شمالی",
+  khuzestan: "خوزستان",
+  zanjan: "زنجان",
+  semnan: "سمنان",
+  sistan: "سیستان و بلوچستان",
+  fars: "فارس",
+  qazvin: "قزوین",
+  qom: "قم",
+  kurdistan: "کردستان",
+  kerman: "کرمان",
+  kermanshah: "کرمانشاه",
+  kohgiluyeh: "کهگیلویه و بویراحمد",
+  golestan: "گلستان",
+  gilan: "گیلان",
+  lorestan: "لرستان",
+  mazandaran: "مازندران",
+  markazi: "مرکزی",
+  hormozgan: "هرمزگان",
+  hamadan: "همدان",
+  yazd: "یزد",
+};
+
+export const iranProvinceLabel = (key: string | null | undefined) => {
+  const trimmed = key?.trim();
+  if (!trimmed) return null;
+  if ((iranProvinceKeys as readonly string[]).includes(trimmed)) {
+    return iranProvinceFa[trimmed as (typeof iranProvinceKeys)[number]];
+  }
+  return trimmed;
+};

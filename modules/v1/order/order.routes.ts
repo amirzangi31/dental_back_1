@@ -16,10 +16,11 @@ import {
   addOrderToDesigner,
   orderlistdesinger,
   uploadDesignerFile,
+  uploadOrderAttachment,
 } from "./order.controller";
 import { uploadSingle, uploadMultipleWithPathFix } from "../../../middleware/upload";
 import { uploadAdminOrderFile } from "../../../middleware/adminOrderUpload";
-import { processOrderFormData } from "../../../middleware/orderFormDataUpload";
+import { processOrderFormData, uploadSingleOrderFile } from "../../../middleware/orderFormDataUpload";
 import { isAdmin } from "../../../middleware/isAdmin";
 import {
   downloadOrderInvoice,
@@ -28,6 +29,7 @@ import {
 
 const router = express.Router();
 
+router.post("/files", auth, uploadSingleOrderFile, uploadOrderAttachment);
 router.post("/order", auth, processOrderFormData, createOrder);
 router.post("/order/:id/with-reference", auth, processOrderFormData, createOrderWithRefrence);
 router.post("/calculateOrderPrice", calculateOrderPrice);

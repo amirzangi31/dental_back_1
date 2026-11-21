@@ -5,13 +5,18 @@ import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { asc, count, desc, eq } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { combineFilters, matchesText, searchText } from "../../../utils/listQuery";
 
 export const getDevice = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(device.createdAt) : desc(device.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(device);
+    const whereClause = combineFilters(
+      eq(device.isDeleted, 0),
+      matchesText(searchText(req), [device.id, device.title]),
+    );
+    const [{ total }] = await db.select({ total: count() }).from(device).where(whereClause);
     const deviceList = await db
       .select({
         id: device.id,
@@ -19,7 +24,7 @@ export const getDevice = async (req: Request, res: Response) => {
         file: device.file,
       })
       .from(device)
-      .where(eq(device.isDeleted , 0))
+      .where(whereClause)
 
       .orderBy(orderByClause)
       .limit(limit)

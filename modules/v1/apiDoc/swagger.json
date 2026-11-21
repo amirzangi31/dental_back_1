@@ -492,6 +492,13 @@
       "get": {
         "tags": ["Catalog"],
         "summary": "getCatalog",
+        "parameters": [
+          { "name": "q", "in": "query", "schema": { "type": "string" }, "description": "Search title or id. Alias: search" },
+          { "name": "search", "in": "query", "schema": { "type": "string" } },
+          { "name": "page", "in": "query", "schema": { "type": "integer", "default": 1 } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "default": 20 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"] } }
+        ],
         "security": [
           {
             "Authorization": []

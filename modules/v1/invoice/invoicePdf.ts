@@ -30,7 +30,7 @@ const setupFont = (doc: any) => {
 const latinNumber = new Intl.NumberFormat("fa-IR-u-nu-latn");
 
 const formatRial = (value: number | null | undefined) => {
-  if (value === null || value === undefined) return "";
+  if (value === null || value === undefined || value === 0) return "";
   return latinNumber.format(value);
 };
 
@@ -132,15 +132,15 @@ const buyerRows = (party: InvoiceParty) => [
     { text: text(party.name), width: 250 },
     { text: "شماره اقتصادی", width: 78 },
     { text: text(party.economicNumber), width: 145 },
-    { text: "شماره ثبت", width: 58 },
-    { text: "", width: CONTENT_WIDTH - 639 },
+    { text: "کد مالیاتی", width: 70 },
+    { text: text(party.taxCode), width: CONTENT_WIDTH - 651 },
   ],
   [
     { text: "نشانی", width: 42 },
     { text: text(party.address), width: 268 },
     { text: "شناسه ملی", width: 58 },
     { text: text(party.nationalId), width: 100 },
-    { text: "شهر", width: 32 },
+    { text: "استان", width: 32 },
     { text: text(party.city), width: 70 },
     { text: "کدپستی", width: 46 },
     { text: text(party.postalCode), width: 78 },
@@ -258,7 +258,7 @@ const drawInvoice = (doc: any, data: InvoiceDocument) => {
   y = headerSpace.y;
   y = drawGoodsHeader(doc, y);
 
-  data.lines.forEach((line) => {
+  data.lines.filter((line) => line.lineTotalRial !== 0 || line.unitAmountRial !== 0 || line.taxRial !== 0).forEach((line) => {
     const values = lineValues(line);
     doc.fontSize(7);
     const descriptionHeight = doc.heightOfString(values[2] || " ", {

@@ -25,12 +25,15 @@ export const tooth = pgTable("tooth", {
     .notNull()
     .$type<
       {
-        id: number;
-        defaultvalue: number;
-        start: number;
-        end: number;
-        price: number;
+        id: number | null;
         title: string;
+        label: string;
+        value: number | null;
+        defaultvalue: number | null;
+        start: number | null;
+        end: number | null;
+        unit: string | null;
+        price: number | null;
       }[]
     >()
     .default([]),

@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { materialcategory } from "../../../db/schema/materialcategory";
 import { eq, and, asc, desc, count } from "drizzle-orm";
+import { combineFilters, matchesText, searchText } from "../../../utils/listQuery";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { getPagination } from "../../../utils/pagination";
 
@@ -35,13 +36,18 @@ export const getMaterialCategories = async (req: Request, res: Response) => {
       sort === "asc"
         ? asc(materialcategory.createdAt)
         : desc(materialcategory.createdAt);
+    const whereClause = combineFilters(
+      eq(materialcategory.isDeleted, 0),
+      matchesText(searchText(req), [materialcategory.id, materialcategory.title]),
+    );
     const [{ total }] = await db
       .select({ total: count() })
-      .from(materialcategory);
+      .from(materialcategory)
+      .where(whereClause);
     const categories = await db
       .select()
       .from(materialcategory)
-      .where(eq(materialcategory.isDeleted, 0))
+      .where(whereClause)
       .orderBy(orderByClause);
 
     return successResponse(
@@ -73,13 +79,18 @@ export const getMaterialCategoryDropDown = async (
       sort === "asc"
         ? asc(materialcategory.createdAt)
         : desc(materialcategory.createdAt);
+    const whereClause = combineFilters(
+      eq(materialcategory.isDeleted, 0),
+      matchesText(searchText(req), [materialcategory.id, materialcategory.title]),
+    );
     const [{ total }] = await db
       .select({ total: count() })
-      .from(materialcategory);
+      .from(materialcategory)
+      .where(whereClause);
     const categories = await db
       .select()
       .from(materialcategory)
-      .where(eq(materialcategory.isDeleted, 0))
+      .where(whereClause)
       .orderBy(orderByClause);
 
     return successResponse(

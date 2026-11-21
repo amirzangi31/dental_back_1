@@ -2,24 +2,29 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { catalog } from "../../../db/schema/catalog";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { and, asc, count, desc, eq, isNull, or } from "drizzle-orm";
+import { asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { category } from "../../../db/schema/category";
 import { color } from "../../../db/schema/color";
 import { getPagination } from "../../../utils/pagination";
+import { combineFilters, matchesText, searchText } from "../../../utils/listQuery";
 
 export const getCatalog = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(catalog);
+    const whereClause = combineFilters(
+      eq(catalog.isDeleted, 0),
+      matchesText(searchText(req), [catalog.id, catalog.title]),
+    );
+    const [{ total }] = await db.select({ total: count() }).from(catalog).where(whereClause);
     const rows = await db
       .select({
         id: catalog.id,
         title: catalog.title,
       })
       .from(catalog)
-      .where(eq(catalog.isDeleted, 0))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -48,10 +53,12 @@ export const catalogDropDown = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(catalog);
+    const whereClause = matchesText(searchText(req), [catalog.id, catalog.title]);
+    const [{ total }] = await db.select({ total: count() }).from(catalog).where(whereClause);
     const rows = await db
       .select({ id: catalog.id, title: catalog.title })
       .from(catalog)
+      .where(whereClause)
       .orderBy(orderByClause);
     return successResponse(
       res,
@@ -79,7 +86,16 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       sort === "asc" ? asc(catalog.createdAt) : desc(catalog.createdAt);
     const categoryOrderBy =
       sort === "asc" ? asc(category.createdAt) : desc(category.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(catalog);
+    const whereClause = combineFilters(
+      eq(catalog.isDeleted, 0),
+      or(isNull(category.id), eq(category.isDeleted, 0)),
+      matchesText(searchText(req), [catalog.id, catalog.title, category.title, category.description]),
+    );
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(catalog)
+      .leftJoin(category, eq(catalog.id, category.catalog))
+      .where(whereClause);
     const rows = await db
       .select({
         id: catalog.id,
@@ -97,12 +113,7 @@ export const getCatalogWithCategory = async (req: Request, res: Response) => {
       .from(catalog)
       .leftJoin(category, eq(catalog.id, category.catalog))
       .leftJoin(color, eq(category.color, color.id))
-      .where(
-        and(
-          eq(catalog.isDeleted, 0),
-          or(isNull(category.id), eq(category.isDeleted, 0))
-        )
-      )
+      .where(whereClause)
       .orderBy(catalogOrderBy, categoryOrderBy)
       .limit(limit)
       .offset(offset);

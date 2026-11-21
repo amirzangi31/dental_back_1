@@ -4,12 +4,14 @@ import { tax } from "../../../db/schema/tax";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { desc, asc, eq, count } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { matchesText, searchText } from "../../../utils/listQuery";
 
 export const getTax = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause = sort === "asc" ? asc(tax.createdAt) : desc(tax.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(tax);
+    const whereClause = matchesText(searchText(req), [tax.id, tax.title, tax.percent]);
+    const [{ total }] = await db.select({ total: count() }).from(tax).where(whereClause);
     const taxList = await db
       .select({
         id: tax.id,
@@ -17,6 +19,7 @@ export const getTax = async (req: Request, res: Response) => {
         title: tax.title,
       })
       .from(tax)
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);

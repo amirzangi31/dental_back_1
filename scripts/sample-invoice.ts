@@ -32,6 +32,7 @@ const sample: InvoiceDocument = {
   paidToman: 169400,
   totalRial: 1694000,
   discountRial: 0,
+  discountCode: null,
   tollRial: 0,
   taxRial: 154000,
   cashRial: 1694000,

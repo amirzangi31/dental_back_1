@@ -49,3 +49,12 @@ export const ticketMessages = pgTable("ticket_messages", {
 
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+export const ticketRead =   pgTable("ticket_read", {
+  id: serial("id").primaryKey(),
+
+  ticketId: integer("ticket_id")
+    .notNull()
+    .references(() => tickets.id, { onDelete: "cascade" }) ,
+  userId: integer("user_id").references(() => users.id , {onDelete: "cascade"}),
+});

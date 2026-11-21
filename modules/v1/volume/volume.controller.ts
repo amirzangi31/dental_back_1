@@ -2,15 +2,23 @@ import { Request, Response } from "express";
 import { db } from "../../../db";
 import { volume } from "../../../db/schema/volume";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { asc, count, desc, eq, isNull, or , and } from "drizzle-orm";
+import { asc, count, desc, eq, isNull, or } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { combineFilters, idQuery, matchesText, readQuery, searchText } from "../../../utils/listQuery";
 
 export const getVolume = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const categoryFilter = idQuery(readQuery(req, "category"), volume.category, "category");
+    if (!categoryFilter.ok) return errorResponse(res, 400, categoryFilter.error, null);
+    const whereClause = combineFilters(
+      eq(volume.isDeleted, 0),
+      categoryFilter.clause,
+      matchesText(searchText(req), [volume.id, volume.title, volume.unit]),
+    );
     const orderByClause =
       sort === "asc" ? asc(volume.createdAt) : desc(volume.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(volume);
+    const [{ total }] = await db.select({ total: count() }).from(volume).where(whereClause);
     const volumeList = await db
       .select({
         id: volume.id,
@@ -22,7 +30,7 @@ export const getVolume = async (req: Request, res: Response) => {
         category: volume.category,
       })
       .from(volume)
-      .where(eq(volume.isDeleted, 0))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -63,12 +71,10 @@ export const getVolumeByCategory = async (req: Request, res: Response) => {
       })
       .from(volume)
       .where(
-        and(
+        combineFilters(
           eq(volume.isDeleted, 0),
-          or(
-            eq(volume.category, categoryNumber),
-            isNull(volume.category),
-          ),
+          or(eq(volume.category, categoryNumber), isNull(volume.category)),
+          matchesText(searchText(req), [volume.id, volume.title, volume.unit]),
         ),
       )
       .orderBy(orderByClause);

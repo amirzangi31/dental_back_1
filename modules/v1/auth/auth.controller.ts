@@ -1,6 +1,7 @@
 import { compare, hash } from "bcryptjs";
 import crypto, { randomUUID } from "crypto";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { combineFilters, matchesText, searchText } from "../../../utils/listQuery";
 import { Request, Response } from "express";
 import { OAuth2Client } from "google-auth-library";
 import { decode } from "jsonwebtoken";
@@ -22,6 +23,7 @@ import { generateAccessToken } from "../../../utils/generateAccessToken";
 import { issueAuthTokens } from "../../../utils/issueAuthTokens";
 import { getPagination } from "../../../utils/pagination";
 import { errorResponse, successResponse } from "../../../utils/responses";
+import { userIdentityPatch } from "../../../utils/userIdentityPatch";
 
 export const sendemail = async (req: Request, res: Response) => {
   try {
@@ -469,10 +471,17 @@ export const logout = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "internal server error", error);
   }
 };
+const sessionUserId = (req: Request): number | null => {
+  const id = Number((req as any).user?.userId);
+  return Number.isInteger(id) ? id : null;
+};
+
 export const user = async (req: Request, res: Response) => {
   try {
-    const token = (req as any).token;
-    const decoded: any = decode(token);
+    const userId = sessionUserId(req);
+    if (userId === null) {
+      return errorResponse(res, 401, "Please log in again", null);
+    }
     const user = await db
       .select({
         id: users.id,
@@ -490,7 +499,10 @@ export const user = async (req: Request, res: Response) => {
         laboratoryName: users.laboratoryName,
       })
       .from(users)
-      .where(eq(users.email, decoded.email));
+      .where(eq(users.id, userId));
+    if (!user[0]) {
+      return errorResponse(res, 404, "User not found", null);
+    }
     return successResponse(res, 200, user[0], "User fetched successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
@@ -498,10 +510,12 @@ export const user = async (req: Request, res: Response) => {
 };
 export const updateUser = async (req: Request, res: Response) => {
   try {
-    const user = (req as any).user;
+    const userId = sessionUserId(req);
+    if (userId === null) {
+      return errorResponse(res, 401, "Please log in again", null);
+    }
 
     const {
-      id,
       name,
       lastName,
       country,
@@ -510,14 +524,6 @@ export const updateUser = async (req: Request, res: Response) => {
       specaility,
       laboratoryName,
     } = req.body;
-    if (id !== user.userId.toString()) {
-      return errorResponse(
-        res,
-        400,
-        "You are not authorized to update this user",
-        null,
-      );
-    }
     const updatedUser = await db
       .update(users)
       .set({
@@ -528,8 +534,10 @@ export const updateUser = async (req: Request, res: Response) => {
         phoneNumber,
         specaility,
         laboratoryName,
+        ...userIdentityPatch(req.body),
+        updatedAt: new Date(),
       })
-      .where(eq(users.id, id));
+      .where(eq(users.id, userId));
     return successResponse(res, 200, updatedUser, "User updated successfully");
   } catch (error) {
     return errorResponse(res, 500, "internal server error", error);
@@ -1180,10 +1188,21 @@ export const getDesigners = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(users.createdAt) : desc(users.createdAt);
+    const whereClause = combineFilters(
+      eq(users.role, "designer"),
+      eq(users.isDeleted, 1),
+      matchesText(searchText(req), [
+        users.id,
+        users.name,
+        users.lastName,
+        users.email,
+        users.phoneNumber,
+      ]),
+    );
     const [{ total }] = await db
       .select({ total: count() })
       .from(users)
-      .where(eq(users.role, "designer"));
+      .where(whereClause);
     const designers = await db
       .select({
         id: users.id,
@@ -1198,7 +1217,7 @@ export const getDesigners = async (req: Request, res: Response) => {
         updatedAt: users.updatedAt,
       })
       .from(users)
-      .where(and(eq(users.role, "designer"), eq(users.isDeleted, 1)))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -1226,10 +1245,15 @@ export const getDesignersDropdown = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(users.createdAt) : desc(users.createdAt);
+    const whereClause = combineFilters(
+      eq(users.role, "designer"),
+      eq(users.isDeleted, 1),
+      matchesText(searchText(req), [users.id, users.name, users.lastName, users.email]),
+    );
     const [{ total }] = await db
       .select({ total: count() })
       .from(users)
-      .where(eq(users.role, "designer"));
+      .where(whereClause);
     const designers = await db
       .select({
         id: users.id,
@@ -1237,7 +1261,7 @@ export const getDesignersDropdown = async (req: Request, res: Response) => {
         lastName: users.lastName,
       })
       .from(users)
-      .where(and(eq(users.role, "designer"), eq(users.isDeleted, 1)))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);

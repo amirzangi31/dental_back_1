@@ -14,7 +14,7 @@ export const startCleanupOrdersJob = () => {
               SELECT t.id FROM tickets t
               WHERE t.order_id IN (
                 SELECT id FROM orders
-                WHERE "createdAt" < NOW() - INTERVAL '1 hours'
+                WHERE "createdAt" < NOW() - INTERVAL '48 hours'
                   AND NOT EXISTS (
                     SELECT 1 FROM payment p2
                     WHERE p2.order_id = orders.id
@@ -28,7 +28,7 @@ export const startCleanupOrdersJob = () => {
       const deletedTickets = await db.delete(tickets).where(
         sql`order_id IN (
               SELECT id FROM orders
-              WHERE "createdAt" < NOW() - INTERVAL '1 hours'
+              WHERE "createdAt" < NOW() - INTERVAL '48 hours'
                 AND NOT EXISTS (
                   SELECT 1 FROM payment p2
                   WHERE p2.order_id = orders.id
@@ -41,7 +41,7 @@ export const startCleanupOrdersJob = () => {
       const deletedReportTicketMessages = await db.delete(ticketMessages).where(
         sql`ticket_id IN (
               SELECT report FROM orders
-              WHERE "createdAt" < NOW() - INTERVAL '1 hours'
+              WHERE "createdAt" < NOW() - INTERVAL '48 hours'
                 AND report IS NOT NULL
                 AND NOT EXISTS (
                   SELECT 1 FROM payment p2
@@ -55,7 +55,7 @@ export const startCleanupOrdersJob = () => {
       const deletedReportTickets = await db.delete(tickets).where(
         sql`id IN (
               SELECT report FROM orders
-              WHERE "createdAt" < NOW() - INTERVAL '1 hours'
+              WHERE "createdAt" < NOW() - INTERVAL '48 hours'
                 AND report IS NOT NULL
                 AND NOT EXISTS (
                   SELECT 1 FROM payment p2
@@ -69,7 +69,7 @@ export const startCleanupOrdersJob = () => {
       const deletedPayments = await db.delete(payment).where(
         sql`order_id IN (
               SELECT id FROM orders
-              WHERE "createdAt" < NOW() - INTERVAL '1 hours'
+              WHERE "createdAt" < NOW() - INTERVAL '48 hours'
                 AND NOT EXISTS (
                   SELECT 1 FROM payment p2
                   WHERE p2.order_id = orders.id
@@ -80,7 +80,7 @@ export const startCleanupOrdersJob = () => {
       console.log(`🧹 Deleted payments: ${deletedPayments.rowCount}`);
 
       const deletedOrders = await db.delete(orders).where(
-        sql`"createdAt" < NOW() - INTERVAL '1 hours'
+        sql`"createdAt" < NOW() - INTERVAL '48 hours'
                 AND NOT EXISTS (
                   SELECT 1 FROM payment p2
                   WHERE p2.order_id = orders.id

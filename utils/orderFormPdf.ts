@@ -32,6 +32,7 @@ export type OrderPdfData = {
     categoryName: string;
     colorLabel: string;
   }[];
+  volumes: { label: string; value: string }[];
   otherServices: string;
   downloadableFiles: DownloadableFile[];
   doctorComments: string;
@@ -359,6 +360,39 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
     teethY += toothBoxHeight + GAP;
   }
   y = teethY + 8;
+
+  if (y > doc.page.height - 180) {
+    doc.addPage();
+    y = MARGIN;
+  }
+
+  const volumeText = data.volumes.length
+    ? data.volumes.map((item) => `${item.label}: ${item.value}`).join("\n")
+    : "-";
+  const volumeInnerWidth = CONTENT_WIDTH - 20;
+  doc.fontSize(10);
+  const volumeTextHeight = doc.heightOfString(volumeText, {
+    width: volumeInnerWidth,
+    align: "right",
+    lineGap: 2,
+  });
+  const volumeBoxHeight = Math.max(52, 22 + volumeTextHeight + 12);
+
+  if (y + volumeBoxHeight > doc.page.height - MARGIN) {
+    doc.addPage();
+    y = MARGIN;
+  }
+
+  drawFieldBox(
+    doc,
+    MARGIN,
+    y,
+    CONTENT_WIDTH,
+    volumeBoxHeight,
+    "حجم‌ها",
+    volumeText,
+  );
+  y += volumeBoxHeight + GAP + 8;
 
   if (y > doc.page.height - 180) {
     doc.addPage();

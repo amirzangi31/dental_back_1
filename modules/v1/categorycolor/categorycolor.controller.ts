@@ -3,6 +3,7 @@ import { db } from "../../../db";
 import { categorycolor } from "../../../db/schema/categorycolor";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { asc, count, desc, eq } from "drizzle-orm";
+import { combineFilters, matchesText, searchText } from "../../../utils/listQuery";
 import { getPagination } from "../../../utils/pagination";
 
 export const getCategoryColor = async (req: Request, res: Response) => {
@@ -10,14 +11,18 @@ export const getCategoryColor = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(categorycolor.createdAt) : desc(categorycolor.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(categorycolor);
+    const whereClause = combineFilters(
+      eq(categorycolor.isDeleted, 0),
+      matchesText(searchText(req), [categorycolor.id, categorycolor.title]),
+    );
+    const [{ total }] = await db.select({ total: count() }).from(categorycolor).where(whereClause);
     const categoryColorList = await db
       .select({
         id: categorycolor.id,
         title: categorycolor.title,
       })
       .from(categorycolor)
-      .where(eq(categorycolor.isDeleted , 0))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);

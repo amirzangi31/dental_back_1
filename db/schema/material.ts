@@ -6,6 +6,7 @@ import {
   integer,
   text,
   timestamp,
+  boolean,
   pgEnum,
 } from "drizzle-orm/pg-core";
 import { color } from "./color";
@@ -24,6 +25,8 @@ export const material: any = pgTable("material", {
   color: integer("color").references(() => color.id),
   descriptionStatus:
     descriptionStatusPgEnum("descriptionStatus").$type<descriptionStatus>(),
+  // When true, the user must fill the text and/or file chosen by descriptionStatus.
+  inputRequired: boolean("inputRequired").notNull().default(false),
   description: text("description"),
   file: text("file"),
   materialcategory: integer("materialcategory").references(

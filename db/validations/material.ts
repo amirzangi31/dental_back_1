@@ -1,5 +1,34 @@
 import * as yup from "yup";
 
+// Multipart forms send booleans as strings. "false" must stay false.
+const inputRequiredFlag = () =>
+  yup
+    .boolean()
+    .transform((_value, originalValue) => {
+      if (
+        originalValue === true ||
+        originalValue === "true" ||
+        originalValue === "1" ||
+        originalValue === 1
+      ) {
+        return true;
+      }
+      if (
+        originalValue === false ||
+        originalValue === "false" ||
+        originalValue === "0" ||
+        originalValue === 0 ||
+        originalValue === "" ||
+        originalValue === null ||
+        originalValue === undefined ||
+        originalValue === "null"
+      ) {
+        return false;
+      }
+      return false;
+    })
+    .default(false);
+
 export const createMaterialSchema = yup.object().shape({
   title: yup.string().required("Title is required"),
   price: yup
@@ -10,6 +39,7 @@ export const createMaterialSchema = yup.object().shape({
     .string()
     .oneOf(["none", "file", "text", "all"], "Invalid description status")
     .required("Description status is required"),
+  inputRequired: inputRequiredFlag(),
   description: yup.string().nullable(),
   file: yup.string().nullable(),
   materialcategory: yup
@@ -27,6 +57,7 @@ export const updateMaterialSchema = yup.object().shape({
   descriptionStatus: yup
     .string()
     .oneOf(["none", "file", "text", "all"], "Invalid description status"),
+  inputRequired: inputRequiredFlag(),
   description: yup.string().nullable(),
   file: yup.string().nullable(),
   materialcategory: yup.string().nullable(),

@@ -4,13 +4,21 @@ import { color } from "../../../db/schema/color";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { asc, count, desc, eq } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { combineFilters, idQuery, matchesText, readQuery, searchText } from "../../../utils/listQuery";
 
 export const getColor = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const categoryFilter = idQuery(readQuery(req, "category"), color.category, "category");
+    if (!categoryFilter.ok) return errorResponse(res, 400, categoryFilter.error, null);
+    const whereClause = combineFilters(
+      eq(color.isDeleted, 0),
+      categoryFilter.clause,
+      matchesText(searchText(req), [color.id, color.title, color.code]),
+    );
     const orderByClause =
       sort === "asc" ? asc(color.createdAt) : desc(color.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(color);
+    const [{ total }] = await db.select({ total: count() }).from(color).where(whereClause);
     const colorList = await db
       .select({
         id: color.id,
@@ -19,7 +27,7 @@ export const getColor = async (req: Request, res: Response) => {
         category: color.category,
       })
       .from(color)
-      .where(eq(color.isDeleted , 0))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -48,10 +56,12 @@ export const getColorDropdown = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(color.createdAt) : desc(color.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(color);
+    const whereClause = matchesText(searchText(req), [color.id, color.title, color.code]);
+    const [{ total }] = await db.select({ total: count() }).from(color).where(whereClause);
     const colorList = await db
       .select({ id: color.id, title: color.title })
       .from(color)
+      .where(whereClause)
       .orderBy(orderByClause)
    
     return successResponse(

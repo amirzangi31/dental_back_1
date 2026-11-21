@@ -221,6 +221,7 @@ async function seedCatalog() {
           price: "1200000.00",
           color: colorRow.id,
           descriptionStatus: "text",
+          inputRequired: true,
           description: "توضیح رنگ یا دستور خاص را بنویسید",
           file: materialIcon,
           materialcategory: groupId("جنس"),

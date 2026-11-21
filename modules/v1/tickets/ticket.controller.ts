@@ -1,23 +1,88 @@
 import { Request, Response } from "express";
 import { db } from "../../../db";
 import { errorResponse, successResponse } from "../../../utils/responses";
-import { ticketMessages, tickets } from "../../../db/schema/ticket";
-import { asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { statusEnum, TicketStatus, ticketMessages, tickets } from "../../../db/schema/ticket";
+import { and, asc, count, desc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { combineFilters, matchesText, oneOf, readQuery, searchText } from "../../../utils/listQuery";
 import { orders } from "../../../db/schema/orders";
 import { files } from "../../../db/schema/files";
+import { users } from "../../../db/schema/users";
 import { getPagination } from "../../../utils/pagination";
+
+const lastMessageSenderType = sql`(
+  SELECT sender_type
+  FROM ticket_messages
+  WHERE ticket_id = ${tickets.id}
+  ORDER BY id DESC
+  LIMIT 1
+)`;
+
+const ticketIsOpen = or(isNull(tickets.ticketStatus), ne(tickets.ticketStatus, "close"));
+
+function countUnansweredMessages(
+  messagesNewestFirst: { senderType: string }[],
+  mySenderType: string,
+  ticketStatus: string | null,
+) {
+  if (ticketStatus === "close") return 0;
+
+  let unanswered = 0;
+  for (const msg of messagesNewestFirst) {
+    if (msg.senderType === mySenderType) break;
+    unanswered += 1;
+  }
+  return unanswered;
+}
+
+export const getTicketsCount = async (req: Request, res: Response) => {
+  try {
+    const user = (req as any).user;
+    const waitingOnMe =
+      user.role === "admin"
+        ? sql`(${lastMessageSenderType}) = 'user'`
+        : and(eq(tickets.userId, Number(user.userId)), sql`(${lastMessageSenderType}) = 'admin'`);
+
+    const [result] = await db
+      .select({ total: count() })
+      .from(tickets)
+      .where(and(ticketIsOpen, waitingOnMe));
+
+    return successResponse(res, 200, { count: Number(result?.total ?? 0) }, "Tickets count fetched successfully");
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
 
 export const getTickets = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
 
     const { limit, offset, sort } = getPagination(req);
+    const status = oneOf(
+      readQuery(req, "ticketStatus") || readQuery(req, "status"),
+      statusEnum,
+      "ticket status",
+    );
+    if (!status.ok) return errorResponse(res, 400, status.error, null);
+
+    const whereClause = combineFilters(
+      user.role === "admin" ? undefined : eq(tickets.userId, user.userId),
+      status.value ? eq(tickets.ticketStatus, status.value as TicketStatus) : undefined,
+      matchesText(searchText(req), [
+        tickets.id,
+        tickets.subject,
+        orders.id,
+        orders.patientname,
+        orders.patientlastname,
+        users.name,
+        users.lastName,
+      ]),
+    );
 
     const orderByClause =
       sort === "asc" ? asc(tickets.createdAt) : desc(tickets.createdAt);
 
-    // گرفتن تیکت‌ها
-    const ticketsBaseQuery = db
+    const ticketsList = await db
       .select({
         id: tickets.id,
         orderId: tickets.orderId,
@@ -28,17 +93,16 @@ export const getTickets = async (req: Request, res: Response) => {
         order: {
           id: orders.id,
           status: orders.status,
+          patientname: orders.patientname,
+          patientlastname: orders.patientlastname,
         },
+        doctorName: users.name,
+        doctorLastName: users.lastName,
       })
       .from(tickets)
-      .leftJoin(orders, eq(tickets.orderId, orders.id));
-
-    const ticketsQuery =
-      user.role === "admin"
-        ? ticketsBaseQuery
-        : ticketsBaseQuery.where(eq(tickets.userId, user.userId));
-
-    const ticketsList = await ticketsQuery
+      .leftJoin(orders, eq(tickets.orderId, orders.id))
+      .leftJoin(users, eq(users.id, tickets.userId))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -60,22 +124,31 @@ export const getTickets = async (req: Request, res: Response) => {
             })
             .from(ticketMessages)
             .where(inArray(ticketMessages.ticketId, ticketIds))
-            .orderBy(desc(ticketMessages.createdAt))
+            .orderBy(desc(ticketMessages.id))
         : [];
 
-    // گروه‌بندی پیام‌ها بر اساس ticketId و گرفتن اولین (آخرین) پیام هر تیکت
+    // پیام‌ها از جدید به قدیم هستند؛ اولین پیام هر تیکت آخرین پیام است
     const lastMessageMap = new Map<number, (typeof allMessages)[0]>();
+    const messagesByTicket = new Map<number, (typeof allMessages)>();
     for (const msg of allMessages) {
+      const thread = messagesByTicket.get(msg.ticketId);
+      if (thread) thread.push(msg);
+      else messagesByTicket.set(msg.ticketId, [msg]);
+
       if (!lastMessageMap.has(msg.ticketId)) {
         lastMessageMap.set(msg.ticketId, msg);
       }
     }
 
-    // ترکیب تیکت‌ها با آخرین پیام
+    const mySenderType = user.role === "admin" ? "admin" : "user";
+
+    // ترکیب تیکت‌ها با آخرین پیام و تعداد پیام‌های بدون پاسخ
     const list = ticketsList.map((ticket) => {
       const lastMsg = lastMessageMap.get(ticket.id);
+      const thread = messagesByTicket.get(ticket.id) ?? [];
       return {
         ...ticket,
+        unansweredCount: countUnansweredMessages(thread, mySenderType, ticket.ticketStatus),
         lastMessage: lastMsg
           ? {
               message: lastMsg.message,
@@ -88,12 +161,12 @@ export const getTickets = async (req: Request, res: Response) => {
       };
     });
 
-    // total count
-    const totalBaseQuery = db.select({ total: count() }).from(tickets);
-    const [{ total }] =
-      user.role === "admin"
-        ? await totalBaseQuery
-        : await totalBaseQuery.where(eq(tickets.userId, user.userId));
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(tickets)
+      .leftJoin(orders, eq(tickets.orderId, orders.id))
+      .leftJoin(users, eq(users.id, tickets.userId))
+      .where(whereClause);
 
     return successResponse(
       res,
@@ -130,11 +203,16 @@ export const getTicketById = async (req: Request, res: Response) => {
         order: {
           id: orders.id,
           status: orders.status,
+          patientname: orders.patientname,
+          patientlastname: orders.patientlastname,
         },
+        doctorName: users.name,
+        doctorLastName: users.lastName,
       })
       .from(tickets)
       .where(eq(tickets.id, id))
       .leftJoin(orders, eq(tickets.orderId, orders.id))
+      .leftJoin(users, eq(users.id, tickets.userId))
       .orderBy(desc(tickets.createdAt));
 
     if (!ticketInfo.length)
@@ -174,40 +252,74 @@ export const getTicketById = async (req: Request, res: Response) => {
 };
 export const createTicket = async (req: Request, res: Response) => {
   try {
-    const { orderId, subject, message } = req.body;
+    const { orderId, subject, message, userId } = req.body;
     const user = (req as any).user;
     const file = req.file;
-    if (orderId && orderId !== "0") {
-      const [order] = await db
+    const hasOrder = orderId !== undefined && orderId !== null && orderId !== "" && orderId !== "0" && orderId !== 0;
+    let order: typeof orders.$inferSelect | undefined;
+
+    if (hasOrder) {
+      const [found] = await db
         .select()
         .from(orders)
         .where(eq(orders.id, +orderId));
 
-      if (!order) {
+      if (!found) {
         return errorResponse(res, 404, "This order is not found", null);
       }
-      if (order.report) {
+      if (found.report) {
         return errorResponse(res, 404, "This order has report", null);
       }
-      if (order.user_id !== user.userId)
+      order = found;
+    }
+
+    let ownerId = Number(user.userId);
+
+    if (user.role === "admin") {
+      const parsedUserId = Number(userId);
+      if (userId !== undefined && userId !== null && userId !== "" && !Number.isNaN(parsedUserId) && parsedUserId > 0) {
+        const [owner] = await db
+          .select({ id: users.id, isDeleted: users.isDeleted })
+          .from(users)
+          .where(eq(users.id, parsedUserId));
+        if (!owner || owner.isDeleted !== 1) {
+          return errorResponse(res, 404, "User not found", null);
+        }
+        ownerId = owner.id;
+      } else if (order?.user_id) {
+        ownerId = order.user_id;
+      } else {
+        return errorResponse(res, 400, "User is required", null);
+      }
+
+      if (order && order.user_id !== ownerId) {
         return errorResponse(
           res,
           403,
           "You are not authorized to create ticket this order",
           null,
         );
+      }
+    } else if (order && order.user_id !== Number(user.userId)) {
+      return errorResponse(
+        res,
+        403,
+        "You are not authorized to create ticket this order",
+        null,
+      );
     }
-    const parsedOrderId = Number(orderId);
 
-    if (isNaN(parsedOrderId)) {
-      throw new Error("Invalid orderId");
+    const parsedOrderId = hasOrder ? Number(orderId) : 0;
+
+    if (Number.isNaN(parsedOrderId)) {
+      return errorResponse(res, 400, "Invalid orderId", null);
     }
 
     const [newTicket] = await db
       .insert(tickets)
       .values({
         orderId: parsedOrderId !== 0 ? parsedOrderId : null,
-        userId: user.userId,
+        userId: ownerId,
         subject,
         ticketStatus: "open",
       })
@@ -259,19 +371,31 @@ export const createTicket = async (req: Request, res: Response) => {
 };
 export const updateTicket = async (req: Request, res: Response) => {
   try {
-    const { subject, status } = req.body;
+    const id = Number(req.params.id);
+    const user = (req as any).user;
 
-    const data: any = {};
-    if (subject) data.subject = subject;
-    if (status) data.status = status;
+    if (!id) {
+      return errorResponse(res, 400, "Invalid ticket id", null);
+    }
 
-    const updated = await db
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, id));
+    if (!ticket) {
+      return errorResponse(res, 404, "Ticket not found", null);
+    }
+    if (user.role !== "admin" && ticket.userId !== Number(user.userId)) {
+      return errorResponse(res, 403, "You are not authorized to update this ticket", null);
+    }
+
+    const [updated] = await db
       .update(tickets)
-      .set(data)
-      .where(eq(tickets.id, Number(req.params.id)))
+      .set({
+        ticketStatus: "close",
+        updatedAt: new Date(),
+      })
+      .where(eq(tickets.id, id))
       .returning();
 
-    return successResponse(res, 200, updated[0], "Ticket updated successfully");
+    return successResponse(res, 200, updated, "Ticket updated successfully");
   } catch (error) {
     return errorResponse(res, 500, "Internal server error", error);
   }
@@ -290,8 +414,21 @@ export const createTicketMessage = async (req: Request, res: Response) => {
     const { ticketId, message } = req.body;
     const user = (req as any).user;
     const file = req.file;
+    const parsedTicketId = Number(ticketId);
+
+    const [ticket] = await db.select().from(tickets).where(eq(tickets.id, parsedTicketId));
+    if (!ticket) {
+      return errorResponse(res, 404, "ticket is not found", {});
+    }
+    if (ticket.ticketStatus === "close") {
+      return errorResponse(res, 400, "Ticket is closed", null);
+    }
+    if (user.role !== "admin" && ticket.userId !== Number(user.userId)) {
+      return errorResponse(res, 403, "You are not authorized to update this ticket", null);
+    }
+
     if (file) {
-      const fileRecord = await db
+      await db
         .insert(files)
         .values({
           filename: file.filename,
@@ -299,18 +436,9 @@ export const createTicketMessage = async (req: Request, res: Response) => {
           mimetype: file.mimetype,
           size: file.size,
           path: file.path,
-          user_id: (req as any).user?.id || null,
+          user_id: (req as any).user?.userId || null,
         })
         .returning();
-    }
-    if (user.role !== "admin") {
-      const ticket = await db
-        .select()
-        .from(tickets)
-        .where(eq(tickets.userId, +user.userId));
-      if (!ticket[0]) {
-        return errorResponse(res, 404, "ticket is not found", {});
-      }
     }
 
     const msg = await db

@@ -1,17 +1,38 @@
 import { Request, Response } from "express";
 import { db } from "../../../db";
-import { materialshade } from "../../../db/schema/materialshade";
+import {
+  materialshade,
+  materialShadeCategoryEnum,
+  MaterialShadeCategory,
+} from "../../../db/schema/materialshade";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { asc, count, desc, eq } from "drizzle-orm";
+import { combineFilters, matchesText, oneOf, readQuery, searchText } from "../../../utils/listQuery";
 import { color } from "../../../db/schema/color";
 import { getPagination } from "../../../utils/pagination";
 
 export const getMaterialShade = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const categoryFilter = oneOf(
+      readQuery(req, "category"),
+      materialShadeCategoryEnum,
+      "shade category",
+    );
+    if (!categoryFilter.ok) return errorResponse(res, 400, categoryFilter.error, null);
+    const whereClause = combineFilters(
+      eq(materialshade.isDeleted, 0),
+      categoryFilter.value
+        ? eq(materialshade.category, categoryFilter.value as MaterialShadeCategory)
+        : undefined,
+      matchesText(searchText(req), [materialshade.id, materialshade.title]),
+    );
     const orderByClause =
       sort === "asc" ? asc(materialshade.createdAt) : desc(materialshade.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(materialshade);
+    const [{ total }] = await db
+      .select({ total: count() })
+      .from(materialshade)
+      .where(whereClause);
     const materialShadeList = await db
       .select({
         id: materialshade.id,
@@ -24,7 +45,7 @@ export const getMaterialShade = async (req: Request, res: Response) => {
         },
       })
       .from(materialshade)
-      .where(eq(materialshade.isDeleted , 0))
+      .where(whereClause)
       .leftJoin(color, eq(materialshade.color, color.id))
       .orderBy(orderByClause)
       .limit(limit)

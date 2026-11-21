@@ -1,11 +1,12 @@
 import { Request, Response } from "express";
 import { db } from "../../../db";
-import { payment, PaymentStatus } from "../../../db/schema/payment";
+import { payment, PaymentStatus, paymentStatusEnum, paymentTypeEnum, PaymentType } from "../../../db/schema/payment";
 import { orders, orderTeeth } from "../../../db/schema/orders";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { combineFilters, matchesText, oneOf, readQuery, searchText } from "../../../utils/listQuery";
 import { tooth } from "../../../db/schema/tooth";
 import { category } from "../../../db/schema/category";
 import { device } from "../../../db/schema/device";
@@ -21,26 +22,35 @@ import { readInvoiceByOrderId } from "../invoice/readInvoice";
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
-    const { status } = req.query as { status?: PaymentStatus };
+    const status = oneOf(readQuery(req, "status"), paymentStatusEnum, "payment status");
+    if (!status.ok) return errorResponse(res, 400, status.error, null);
+    const type = oneOf(readQuery(req, "type"), paymentTypeEnum, "payment type");
+    if (!type.ok) return errorResponse(res, 400, type.error, null);
 
     const user = (req as any).user;
 
     const orderByClause =
       sort === "asc" ? asc(payment.createdAt) : desc(payment.createdAt);
 
-    const whereConditions = [
+    const whereClause = combineFilters(
       eq(orders.user_id, user.userId),
-    ];
-
-    if (status) {
-      whereConditions.push(eq(payment.status, status));
-    }
+      status.value ? eq(payment.status, status.value as PaymentStatus) : undefined,
+      type.value ? eq(payment.type, type.value as PaymentType) : undefined,
+      matchesText(searchText(req), [
+        payment.id,
+        payment.trackingCode,
+        payment.description,
+        orders.id,
+        orders.title,
+        orders.patientname,
+      ]),
+    );
 
     const [{ total }] = await db
       .select({ total: count() })
       .from(payment)
       .leftJoin(orders, eq(payment.order_id, orders.id))
-      .where(and(...whereConditions));
+      .where(whereClause);
 
     const list = await db
       .select({
@@ -68,7 +78,7 @@ export const getPayments = async (req: Request, res: Response) => {
       })
       .from(payment)
       .leftJoin(orders, eq(payment.order_id, orders.id))
-      .where(and(...whereConditions))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);

@@ -17,6 +17,8 @@ import {
 } from "./invoiceDocument";
 import { readInvoiceByOrderId } from "./readInvoice";
 import { readSellerProfile } from "./sellerProfile";
+import { consumeDiscountUse } from "../discountCode/resolveDiscount";
+import { iranProvinceLabel } from "../../../utils/iranNationalCode";
 
 const finiteNumber = (value: unknown) => {
   const amount = Number(value ?? 0);
@@ -92,7 +94,9 @@ export const issueInvoiceForSettlement = async (
     }) => ({
       categoryTitle: row.categoryTitle,
       toothNumber: row.toothnumber,
-      patientName: order.patientname,
+      patientName:
+        [order.patientname, order.patientlastname].filter(Boolean).join(" ") ||
+        null,
       beforeTaxToman:
         finiteNumber(row.categoryPrice) +
         materialIdsOf(row.materials).reduce(
@@ -104,10 +108,11 @@ export const issueInvoiceForSettlement = async (
     vipPercent: finiteNumber(vipItem?.percent),
     taxPercent: finiteNumber(taxItem?.percent),
     paidToman: input.paidToman,
+    discountToman: finiteNumber(order.discountToman),
   });
 
   const seller = await readSellerProfile(tx);
-  const notes = invoiceNotes(order.comment, input.trackingCode);
+  const notes = invoiceNotes(order.comment, input.trackingCode, order.discountCode);
   const issuedAt = new Date();
   const [created] = await tx
     .insert(invoice)
@@ -119,9 +124,10 @@ export const issueInvoiceForSettlement = async (
       buyerPhone: buyer ? blank(buyer.phoneNumber) : null,
       buyerAddress: buyer ? blank(buyer.address) : null,
       buyerPostalCode: buyer ? blank(buyer.postalCode) : null,
-      buyerEconomicNumber: null,
-      buyerNationalId: null,
-      buyerCity: null,
+      buyerEconomicNumber: buyer ? blank(buyer.economicCode) : null,
+      buyerNationalId: buyer ? blank(buyer.nationalCode) : null,
+      buyerCity: buyer ? iranProvinceLabel(buyer.province) : null,
+      buyerTaxCode: buyer ? blank(buyer.taxCode) : null,
       sellerName: seller.name,
       sellerEconomicNumber: seller.economicNumber,
       sellerNationalId: seller.nationalId,
@@ -135,6 +141,7 @@ export const issueInvoiceForSettlement = async (
       paidToman: money.paidToman,
       totalRial: money.totalRial,
       discountRial: money.discountRial,
+      discountCode: blank(order.discountCode),
       tollRial: money.tollRial,
       taxRial: money.taxRial,
       cash: true,
@@ -165,6 +172,8 @@ export const issueInvoiceForSettlement = async (
         )
         .returning()
     : [];
+
+  await consumeDiscountUse(tx, order.discountCode);
 
   return toInvoiceDocument(created, createdLines);
 };

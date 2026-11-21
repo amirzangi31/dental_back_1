@@ -4,6 +4,7 @@ import { category } from "../../../db/schema/category";
 import { files } from "../../../db/schema/files";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { asc, count, desc, eq } from "drizzle-orm";
+import { combineFilters, idQuery, matchesText, readQuery, searchText } from "../../../utils/listQuery";
 import { catalog } from "../../../db/schema/catalog";
 import { color } from "../../../db/schema/color";
 import { getPagination } from "../../../utils/pagination";
@@ -34,9 +35,16 @@ const optionalId = (value: unknown): number | null => {
 export const getCategory = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
+    const catalogFilter = idQuery(readQuery(req, "catalog"), category.catalog, "catalog");
+    if (!catalogFilter.ok) return errorResponse(res, 400, catalogFilter.error, null);
+    const whereClause = combineFilters(
+      eq(category.isDeleted, 0),
+      catalogFilter.clause,
+      matchesText(searchText(req), [category.id, category.title, category.description]),
+    );
     const orderByClause =
       sort === "asc" ? asc(category.createdAt) : desc(category.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(category);
+    const [{ total }] = await db.select({ total: count() }).from(category).where(whereClause);
     const categoryList = await db
       .select({
         id: category.id,
@@ -54,7 +62,7 @@ export const getCategory = async (req: Request, res: Response) => {
         },
       })
       .from(category)
-      .where(eq(category.isDeleted, 0))
+      .where(whereClause)
       .leftJoin(catalog, eq(category.catalog, catalog.id))
       .leftJoin(color, eq(category.color, color.id))
       .orderBy(orderByClause)
@@ -87,7 +95,12 @@ export const getCategoryDropDown = async (req: Request, res: Response) => {
         title: category.title,
       })
       .from(category)
-      .where(eq(category.isDeleted , 0))
+      .where(
+        combineFilters(
+          eq(category.isDeleted, 0),
+          matchesText(searchText(req), [category.id, category.title]),
+        ),
+      )
       .orderBy(asc(category.title));
 
     return successResponse(

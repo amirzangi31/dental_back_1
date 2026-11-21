@@ -4,13 +4,15 @@ import { vip } from "../../../db/schema/vip";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { desc, asc, eq, count } from "drizzle-orm";
 import { getPagination } from "../../../utils/pagination";
+import { matchesText, searchText } from "../../../utils/listQuery";
 
 export const getVip = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(vip.createdAt) : desc(vip.createdAt);
-    const [{ total }] = await db.select({ total: count() }).from(vip);
+    const whereClause = matchesText(searchText(req), [vip.id, vip.percent, vip.description]);
+    const [{ total }] = await db.select({ total: count() }).from(vip).where(whereClause);
     const vipList = await db
       .select({
         id: vip.id, 
@@ -20,6 +22,7 @@ export const getVip = async (req: Request, res: Response) => {
         endTime: vip.endTime,
       })
       .from(vip)
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);

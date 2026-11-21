@@ -1,9 +1,10 @@
 import { Request, Response } from "express";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
-import { orders, OrderStatus, orderTeeth, orderFiles } from "../../../db/schema/orders";
+import { orders, OrderStatus, orderStatusEnum, orderTeeth, orderFiles } from "../../../db/schema/orders";
 import { tooth } from "../../../db/schema/tooth";
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { calculateTeethTotalPrice } from "../../../utils/calculateTeethPrice";
 import { category } from "../../../db/schema/category";
 import { device } from "../../../db/schema/device";
@@ -24,7 +25,15 @@ import path from "path";
 import fs from "fs";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
-import { payment, PaymentStatus } from "../../../db/schema/payment";
+import {
+  booleanQuery,
+  combineFilters,
+  matchesText,
+  oneOf,
+  readQuery,
+  searchText,
+} from "../../../utils/listQuery";
+import { payment, PaymentStatus, paymentStatusEnum } from "../../../db/schema/payment";
 import {
   ensurePendingPayment,
   findOrderPayment,
@@ -34,7 +43,13 @@ import {
 import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
 import { users } from "../../../db/schema/users";
+import { tickets } from "../../../db/schema/ticket";
 import { parseDefinedPrice } from "../../../utils/parseDefinedPrice";
+import {
+  applyDiscountToBeforeTax,
+  billAfterDiscount,
+  readDiscountCodeInput,
+} from "../discountCode/resolveDiscount";
 
 // The order form sends 0 when no shade or device was chosen. 0 is not a row id.
 const optionalForeignKey = (value: unknown): number | null => {
@@ -47,6 +62,183 @@ const optionalForeignKey = (value: unknown): number | null => {
 const isRedesignFlag = (value: unknown) =>
   value === true || value === "true" || value === "1" || value === 1;
 
+const patientFullName = (
+  first?: string | null,
+  last?: string | null,
+) => [first, last].map((part) => part?.trim()).filter(Boolean).join(" ") || null;
+
+const finiteNumber = (value: unknown): number | null => {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+// Each volume on the order is a label plus the number the user entered.
+const normalizeToothVolumes = (raw: unknown) => {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const label = String(record.label ?? record.title ?? "").trim();
+    const value = finiteNumber(record.value ?? record.defaultvalue);
+    if (!label && value === null) return [];
+    return [
+      {
+        id: finiteNumber(record.id),
+        title: label,
+        label,
+        value,
+        defaultvalue: value,
+        start: finiteNumber(record.start),
+        end: finiteNumber(record.end),
+        unit:
+          record.unit == null || record.unit === "" ? null : String(record.unit),
+        price: finiteNumber(record.price),
+      },
+    ];
+  });
+};
+
+const volumeFieldLabel = (
+  toothnumber: number | null | undefined,
+  volumeItem: { label?: string | null; title?: string | null },
+) => {
+  const name = String(volumeItem.label || volumeItem.title || "").trim();
+  if (!name) return "";
+  return toothnumber == null ? name : `دندان ${toothnumber} / ${name}`;
+};
+
+const volumeFieldValue = (volumeItem: {
+  value?: number | string | null;
+  defaultvalue?: number | string | null;
+  unit?: string | null;
+}) => {
+  const numeric = volumeItem.value ?? volumeItem.defaultvalue;
+  if (numeric === null || numeric === undefined || numeric === "") return "-";
+  const unit =
+    typeof volumeItem.unit === "string" && volumeItem.unit.trim()
+      ? ` ${volumeItem.unit.trim()}`
+      : "";
+  return `${numeric}${unit}`;
+};
+
+const loadOrderTickets = async (orderIds: number[]) => {
+  const map = new Map<
+    number,
+    {
+      id: number;
+      orderId: number | null;
+      subject: string | null;
+      ticketStatus: string | null;
+      createdAt: Date | null;
+    }[]
+  >();
+  if (!orderIds.length) return map;
+
+  const rows = await db
+    .select({
+      id: tickets.id,
+      orderId: tickets.orderId,
+      subject: tickets.subject,
+      ticketStatus: tickets.ticketStatus,
+      createdAt: tickets.createdAt,
+    })
+    .from(tickets)
+    .where(inArray(tickets.orderId, orderIds))
+    .orderBy(desc(tickets.createdAt));
+
+  for (const row of rows) {
+    if (!row.orderId) continue;
+    const list = map.get(row.orderId) ?? [];
+    list.push(row);
+    map.set(row.orderId, list);
+  }
+  return map;
+};
+
+const orderOwner = alias(users, "order_owner");
+
+const readOrderListFilters = (req: Request) => {
+  const status = oneOf(readQuery(req, "status"), orderStatusEnum, "order status");
+  if (!status.ok) return status;
+  const paymentStatus = oneOf(
+    readQuery(req, "paymentStatus"),
+    paymentStatusEnum,
+    "payment status",
+  );
+  if (!paymentStatus.ok) return paymentStatus;
+  const vip = booleanQuery(readQuery(req, "vip"), "vip filter");
+  if (!vip.ok) return vip;
+
+  return {
+    ok: true as const,
+    q: searchText(req),
+    status: status.value,
+    paymentStatus: paymentStatus.value,
+    vip: vip.value,
+  };
+};
+
+const materialInputIsEmpty = (value: unknown) => {
+  if (value === null || value === undefined || value === "") return true;
+  if (typeof value === "number") return !Number.isFinite(value) || value <= 0;
+  if (typeof value === "string") return value.trim() === "";
+  if (typeof value === "object" && !Array.isArray(value)) {
+    return Object.keys(value as object).length === 0;
+  }
+  return false;
+};
+
+// descriptionStatus decides which inputs exist. inputRequired decides if they must be filled.
+const findMissingRequiredMaterialInput = async (
+  teeth: Array<{
+    materials?: Array<{ material?: unknown; text?: unknown; file?: unknown }>;
+  }>,
+): Promise<string | null> => {
+  const ids = new Set<number>();
+  for (const toothItem of teeth) {
+    if (!Array.isArray(toothItem.materials)) continue;
+    for (const mat of toothItem.materials) {
+      const id = Number(mat.material);
+      if (Number.isInteger(id) && id > 0) ids.add(id);
+    }
+  }
+  if (ids.size === 0) return null;
+
+  const rows = await db
+    .select({
+      id: material.id,
+      title: material.title,
+      descriptionStatus: material.descriptionStatus,
+      inputRequired: material.inputRequired,
+    })
+    .from(material)
+    .where(inArray(material.id, [...ids]));
+
+  const byId = new Map(rows.map((row) => [row.id, row]));
+
+  for (const toothItem of teeth) {
+    if (!Array.isArray(toothItem.materials)) continue;
+    for (const mat of toothItem.materials) {
+      const definition = byId.get(Number(mat.material));
+      if (!definition?.inputRequired) continue;
+      const needsText =
+        definition.descriptionStatus === "text" ||
+        definition.descriptionStatus === "all";
+      const needsFile =
+        definition.descriptionStatus === "file" ||
+        definition.descriptionStatus === "all";
+      if (
+        (needsText && materialInputIsEmpty(mat.text)) ||
+        (needsFile && materialInputIsEmpty(mat.file))
+      ) {
+        return definition.title || String(definition.id);
+      }
+    }
+  }
+  return null;
+};
+
 // A redesign is half the catalog price. VIP and tax are applied after that cut.
 const redesignPrice = (price: number, isRedesign: boolean) =>
   isRedesign ? price / 2 : price;
@@ -58,12 +250,14 @@ export const createOrder = async (req: Request, res: Response) => {
     const {
       title,
       patientname,
+      patientlastname,
       patientage,
       patientgender,
       report,
       comment,
       file,
       discount,
+      discountCode,
       vip: vipParametr,
       teeth,
       connections,
@@ -78,6 +272,16 @@ export const createOrder = async (req: Request, res: Response) => {
         "At least one tooth must be selected",
         null,
       );
+
+    const missingMaterialInput = await findMissingRequiredMaterialInput(teeth);
+    if (missingMaterialInput) {
+      return errorResponse(
+        res,
+        400,
+        `وارد کردن اطلاعات متریال «${missingMaterialInput}» اجباری است`,
+        null,
+      );
+    }
 
     // ---------- create teeth values & compute prices ----------
     let totalPrice = 0;
@@ -98,7 +302,7 @@ export const createOrder = async (req: Request, res: Response) => {
         device: +t.device || null,
         materialshade: +t.materialshade || null,
         materials: materialsData,
-        volume: t.volume || [],
+        volume: normalizeToothVolumes(t.volume),
       };
     });
 
@@ -163,8 +367,16 @@ export const createOrder = async (req: Request, res: Response) => {
     const vipAmount =
       isVip && !hasMissingPrice ? (totalPrice * vipPercent) / 100 : 0;
     const totalBeforeTax = totalPrice + vipAmount;
-    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
-    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
+    const appliedDiscount = await applyDiscountToBeforeTax(
+      discountCode,
+      hasMissingPrice ? 0 : totalBeforeTax,
+      hasMissingPrice ? 0 : taxPercent,
+    );
+    if (!appliedDiscount.ok) {
+      return errorResponse(res, 400, appliedDiscount.message, null);
+    }
+    const taxAmount = appliedDiscount.taxAmount;
+    const finalTotal = hasMissingPrice ? 0 : appliedDiscount.total;
 
     // ---------- create order ----------
     const [createdOrder]: any = await db
@@ -173,6 +385,7 @@ export const createOrder = async (req: Request, res: Response) => {
         title: title || null,
         user_id: user.userId,
         patientname: patientname || null,
+        patientlastname: patientlastname || null,
         patientage: patientage ? parseInt(patientage, 10) : null,
         patientgender: patientgender || null,
         report: report ? parseInt(report, 10) : null,
@@ -182,6 +395,8 @@ export const createOrder = async (req: Request, res: Response) => {
         comment: comment || null,
         file: file || null,
         discount: discount ? parseInt(discount, 10) : null,
+        discountCode: appliedDiscount.code,
+        discountToman: appliedDiscount.discountToman,
         vip: vipParametr === "true" || vipParametr === true || false,
         connections: connections || [],
         antagonists: antagonists || [],
@@ -289,6 +504,8 @@ export const createOrder = async (req: Request, res: Response) => {
         payment: null,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
+        discountCode: appliedDiscount.code,
+        discountToman: appliedDiscount.discountToman,
         files: attachmentFileRecords,
       },
       "Order created successfully",
@@ -475,8 +692,13 @@ export const getOrderWithId = async (req: Request, res: Response) => {
     const vipAmount =
       !hasMissingPrice && isVip ? (finalSubtotal * vipPercent) / 100 : 0;
     const totalBeforeTax = finalSubtotal + vipAmount;
-    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
-    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
+    const priced = billAfterDiscount({
+      beforeTaxToman: hasMissingPrice ? 0 : totalBeforeTax,
+      taxPercent: hasMissingPrice ? 0 : taxPercent,
+      discountToman: hasMissingPrice ? 0 : Number(order.discountToman ?? 0),
+    });
+    const taxAmount = priced.taxAmount;
+    const finalTotal = hasMissingPrice ? 0 : priced.total;
 
     return successResponse(
       res,
@@ -494,6 +716,8 @@ export const getOrderWithId = async (req: Request, res: Response) => {
           vipPercent: vipPercent,
           taxPercent: taxPercent,
           taxAmount: taxAmount,
+          discountCode: order.discountCode ?? null,
+          discountToman: priced.discountToman,
           total: finalTotal,
           hasMissingPrice: hasMissingPrice,
           vipInfo: vipItem
@@ -564,11 +788,13 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const {
       title,
       patientname,
+      patientlastname,
       patientage,
       patientgender,
       comment,
       file,
       discount,
+      discountCode,
       vip: vipParametr,
       teeth,
     } = req.body;
@@ -707,9 +933,20 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         device: deviceValue,
         materialshade: materialshadeValue,
         materials: materialsData,
-        volume: t.volume || originalTooth?.volume || [],
+        volume: normalizeToothVolumes(t.volume || originalTooth?.volume || []),
       };
     });
+
+    const missingMaterialInput =
+      await findMissingRequiredMaterialInput(teethValues);
+    if (missingMaterialInput) {
+      return errorResponse(
+        res,
+        400,
+        `وارد کردن اطلاعات متریال «${missingMaterialInput}» اجباری است`,
+        null,
+      );
+    }
 
     for (let i = 0; i < teeth.length; i++) {
       const t = teeth[i];
@@ -759,8 +996,16 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const isVip = vipParametr === "true" || vipParametr === true;
     const vipAmount = isVip ? (billablePrice * vipPercent) / 100 : 0;
     const totalBeforeTax = billablePrice + vipAmount;
-    const taxAmount = (totalBeforeTax * taxPercent) / 100;
-    const finalTotal = totalBeforeTax + taxAmount;
+    const appliedDiscount = await applyDiscountToBeforeTax(
+      discountCode,
+      totalBeforeTax,
+      taxPercent,
+    );
+    if (!appliedDiscount.ok) {
+      return errorResponse(res, 400, appliedDiscount.message, null);
+    }
+    const taxAmount = appliedDiscount.taxAmount;
+    const finalTotal = appliedDiscount.total;
 
     const { createdOrder, createdTeeth } = await db.transaction(async (tx) => {
       const [orderRow]: any = await tx
@@ -769,6 +1014,8 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
           title: title || originalOrder.title || null,
           user_id: user.userId,
           patientname: patientname || originalOrder.patientname || null,
+          patientlastname:
+            patientlastname || originalOrder.patientlastname || null,
           patientage: patientage
             ? parseInt(patientage, 10)
             : originalOrder.patientage || null,
@@ -783,6 +1030,8 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
           discount: discount
             ? parseInt(discount, 10)
             : originalOrder.discount || null,
+          discountCode: appliedDiscount.code,
+          discountToman: appliedDiscount.discountToman,
           vip: vipParametr === "true" || vipParametr === true || false,
           connections: originalOrder.connections || [],
           antagonists: originalOrder.antagonists || [],
@@ -889,6 +1138,8 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         payment: null,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
+        discountCode: appliedDiscount.code,
+        discountToman: appliedDiscount.discountToman,
         originalOrderId: +id,
         files: attachmentFileRecordsRef,
       },
@@ -905,6 +1156,7 @@ export const updateOrder = async (req: Request, res: Response) => {
     const {
       title,
       patientname,
+      patientlastname,
       patientage,
       patientgender,
       report,
@@ -912,6 +1164,7 @@ export const updateOrder = async (req: Request, res: Response) => {
       comment,
       file,
       discount,
+      discountCode,
       vip: vipParametr,
       teeth,
       connections,
@@ -952,6 +1205,64 @@ export const updateOrder = async (req: Request, res: Response) => {
         null,
       );
 
+    const teethValues = teeth.map((t: any) => ({
+      toothnumber: +t.toothnumber || null,
+      category: +t.category || null,
+      device: +t.device || null,
+      materialshade: +t.materialshade || null,
+      volume: normalizeToothVolumes(t.volume),
+    }));
+    const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
+      category,
+      device,
+      materialshade,
+      volume,
+    });
+
+    const codeRequest = readDiscountCodeInput(discountCode);
+    const currentDiscountCode = order[0].discountCode ?? null;
+    if (order[0].paymentstatus) {
+      const nextCode =
+        codeRequest.state === "absent"
+          ? currentDiscountCode
+          : codeRequest.state === "empty"
+            ? null
+            : codeRequest.state === "code"
+              ? codeRequest.code
+              : null;
+      if (codeRequest.state === "invalid" || nextCode !== currentDiscountCode) {
+        return errorResponse(
+          res,
+          400,
+          "بعد از پرداخت نمی‌توان کد تخفیف را تغییر داد",
+          null,
+        );
+      }
+    }
+
+    let pricedTotal = totalPrice;
+    let discountCodeToStore: string | null = currentDiscountCode;
+    let discountTomanToStore: number | null = order[0].discountToman ?? null;
+    if (!order[0].paymentstatus) {
+      const codeForPricing =
+        codeRequest.state === "code"
+          ? codeRequest.code
+          : codeRequest.state === "absent"
+            ? currentDiscountCode
+            : undefined;
+      const appliedDiscount = await applyDiscountToBeforeTax(
+        codeForPricing,
+        totalPrice,
+        0,
+      );
+      if (!appliedDiscount.ok) {
+        return errorResponse(res, 400, appliedDiscount.message, null);
+      }
+      pricedTotal = appliedDiscount.total;
+      discountCodeToStore = appliedDiscount.code;
+      discountTomanToStore = appliedDiscount.discountToman;
+    }
+
     // ---------- remove old teeth ----------
     const oldTeeth = await db
       .select()
@@ -962,22 +1273,6 @@ export const updateOrder = async (req: Request, res: Response) => {
       await db.delete(orderTeeth).where(eq(orderTeeth.orderId, +id));
       await db.delete(tooth).where(inArray(tooth.id, oldToothIds));
     }
-
-    // ---------- create new teeth & compute prices ----------
-    const teethValues = teeth.map((t: any) => ({
-      toothnumber: +t.toothnumber || null,
-      category: +t.category || null,
-      device: +t.device || null,
-      materialshade: +t.materialshade || null,
-      volume: t.volume || [],
-    }));
-
-    const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
-      category,
-      device,
-      materialshade,
-      volume,
-    });
 
     const createdTeeth = await db.insert(tooth).values(teethValues).returning();
 
@@ -1030,14 +1325,17 @@ export const updateOrder = async (req: Request, res: Response) => {
       .set({
         title,
         patientname,
+        patientlastname: patientlastname || null,
         patientage: patientage ? parseInt(patientage, 10) : null,
         patientgender: patientgender || null,
         report: report ? parseInt(report, 10) : null,
         status: nextStatus,
-        totalaprice: String(totalPrice),
+        totalaprice: order[0].paymentstatus ? order[0].totalaprice : String(pricedTotal),
         comment,
         file,
         discount: discount ? parseInt(discount, 10) : null,
+        discountCode: discountCodeToStore,
+        discountToman: discountTomanToStore,
         vip: vipParametr === "true" || false,
         connections: connections || [],
         antagonists: antagonists || [],
@@ -1131,55 +1429,64 @@ export const submitOrder = async (req: Request, res: Response) => {
 export const orderList = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const filters = readOrderListFilters(req);
+    if (!filters.ok) return errorResponse(res, 400, filters.error, null);
 
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
 
-    const { isDelivered, paymentStatus } = req.query as {
-      isDelivered?: string;
-      paymentStatus?: PaymentStatus;
-    };
-
-    /* ------------------ WHERE CONDITIONS ------------------ */
-    const whereConditions = [
+    const whereClause = combineFilters(
       eq(orders.user_id, user.userId),
       eq(orders.isDeleted, 0),
-    ];
-
-    // if (isDelivered !== undefined) {
-    //   whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
-    // }
-
-    const paymentStatusCondition = paymentStatus
-      ? eq(payment.status, paymentStatus)
-      : undefined;
+      filters.status ? eq(orders.status, filters.status) : undefined,
+      filters.paymentStatus
+        ? eq(payment.status, filters.paymentStatus)
+        : undefined,
+      filters.vip === undefined ? undefined : eq(orders.vip, filters.vip),
+      matchesText(filters.q, [
+        orders.id,
+        orders.title,
+        orders.patientname,
+        orders.patientlastname,
+        orders.comment,
+      ]),
+    );
 
     /* ------------------ TOTAL COUNT ------------------ */
     const [{ total }] = await db
       .select({ total: count() })
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
-      .where(and(...whereConditions, paymentStatusCondition));
+      .where(whereClause);
 
     /* ------------------ ORDERS LIST ------------------ */
     const ordersList = await db
       .select({
         id: orders.id,
         title: orders.title,
+        user_id: orders.user_id,
         status: orders.status,
+        patientname: orders.patientname,
+        patientlastname: orders.patientlastname,
+        patientage: orders.patientage,
+        patientgender: orders.patientgender,
         paymentstatus: orders.paymentstatus,
         totalaprice: orders.totalaprice,
         comment: orders.comment,
         file: orders.file,
         adminFile: orders.adminFile,
         discount: orders.discount,
+        discountCode: orders.discountCode,
+        discountToman: orders.discountToman,
         vip: orders.vip,
         deliveryDate: orders.deliveryDate,
         report: orders.report,
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,
         refrence: orders.refrence,
+        doctorName: orderOwner.name,
+        doctorLastName: orderOwner.lastName,
         payment: {
           id: payment.id,
           status: payment.status,
@@ -1190,7 +1497,8 @@ export const orderList = async (req: Request, res: Response) => {
       })
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
-      .where(and(...whereConditions, paymentStatusCondition))
+      .leftJoin(orderOwner, eq(orderOwner.id, orders.user_id))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -1214,6 +1522,7 @@ export const orderList = async (req: Request, res: Response) => {
 
     /* ------------------ CATEGORIES + FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
+    const ticketMap = await loadOrderTickets(orderIds);
 
     const allOrderFiles = orderIds.length
       ? await db
@@ -1275,6 +1584,7 @@ export const orderList = async (req: Request, res: Response) => {
           ...order,
           categories: uniqueCategories,
           files: filesByOrderId[order.id] ?? [],
+          tickets: ticketMap.get(order.id) ?? [],
         };
       }),
     );
@@ -1305,19 +1615,28 @@ export const orderDropDown = async (req: Request, res: Response) => {
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
+    const whereClause = combineFilters(
+      eq(orders.user_id, user.userId),
+      matchesText(searchText(req), [
+        orders.id,
+        orders.title,
+        orders.patientname,
+        orders.patientlastname,
+      ]),
+    );
 
     const [{ total }] = await db
       .select({ total: count() })
       .from(orders)
-      .where(eq(orders.user_id, user.userId));
+      .where(whereClause);
 
     const ordersList = await db
       .select({
         id: orders.id,
-        title: orders.patientname,
+        title: sql<string>`trim(concat_ws(' ', ${orders.patientname}, ${orders.patientlastname}))`,
       })
       .from(orders)
-      .where(eq(orders.user_id, user.userId))
+      .where(whereClause)
       .orderBy(orderByClause);
 
     return successResponse(
@@ -1352,32 +1671,41 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       );
     }
 
+    const filters = readOrderListFilters(req);
+    if (!filters.ok) return errorResponse(res, 400, filters.error, null);
+
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
 
-    const { isDelivered, paymentStatus } = req.query as {
-      isDelivered?: string;
-      paymentStatus?: PaymentStatus;
-    };
-
-    /* ------------------ WHERE CONDITIONS ------------------ */
-    const whereConditions = [eq(orders.isDeleted, 0)];
-
-    // if (isDelivered !== undefined) {
-    //   whereConditions.push(eq(orders.isDelivered, isDelivered === "true"));
-    // }
-
-    const paymentStatusCondition = paymentStatus
-      ? eq(payment.status, paymentStatus)
-      : undefined;
+    const whereClause = combineFilters(
+      eq(orders.isDeleted, 0),
+      filters.status ? eq(orders.status, filters.status) : undefined,
+      filters.paymentStatus
+        ? eq(payment.status, filters.paymentStatus)
+        : undefined,
+      filters.vip === undefined ? undefined : eq(orders.vip, filters.vip),
+      matchesText(filters.q, [
+        orders.id,
+        orders.title,
+        orders.patientname,
+        orders.patientlastname,
+        orders.comment,
+        orderOwner.name,
+        orderOwner.lastName,
+        orderOwner.email,
+        orderOwner.phoneNumber,
+        orderOwner.laboratoryName,
+      ]),
+    );
 
     /* ------------------ TOTAL ------------------ */
     const [{ total }] = await db
       .select({ total: count() })
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
-      .where(and(...whereConditions, paymentStatusCondition));
+      .leftJoin(orderOwner, eq(orderOwner.id, orders.user_id))
+      .where(whereClause);
 
     /* ------------------ ORDERS ------------------ */
     const ordersList = await db
@@ -1385,13 +1713,15 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
       .leftJoin(users, eq(users.id, orders.designer_id))
-      .where(and(...whereConditions, paymentStatusCondition))
+      .leftJoin(orderOwner, eq(orderOwner.id, orders.user_id))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
 
     /* ------------------ FILES ------------------ */
     const orderIds = ordersList.map(({ orders: order }) => order.id);
+    const ticketMap = await loadOrderTickets(orderIds);
     const allOrderFiles = orderIds.length
       ? await db
           .select({
@@ -1420,7 +1750,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
 
     /* ------------------ CATEGORIES + PAYMENT (OUTPUT SAME) ------------------ */
     const ordersWithCategories = await Promise.all(
-      ordersList.map(async ({ orders: order }) => {
+      ordersList.map(async ({ orders: order, order_owner: owner }) => {
         const teethRelations = await db
           .select()
           .from(orderTeeth)
@@ -1456,9 +1786,12 @@ export const orderListAdmin = async (req: Request, res: Response) => {
 
         return {
           ...order,
+          doctorName: owner?.name ?? null,
+          doctorLastName: owner?.lastName ?? null,
           categories: teethCategories,
           payment: paymentItem[0] || null,
           files: filesByOrderId[order.id] ?? [],
+          tickets: ticketMap.get(order.id) ?? [],
         };
       }),
     );
@@ -1736,7 +2069,7 @@ const isWithinVipHours = (
 
 export const calculateOrderPrice = async (req: Request, res: Response) => {
   try {
-    const { teeth, vip: vipParametr, redesign } = req.body;
+    const { teeth, vip: vipParametr, redesign, discountCode } = req.body;
     const isRedesignQuote = isRedesignFlag(redesign);
     if (!teeth || !Array.isArray(teeth)) {
       return errorResponse(res, 400, "Invalid order data", null);
@@ -1860,8 +2193,16 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
     const vipAmount =
       !hasMissingPrice && isVip ? (finalSubtotal * vipPercent) / 100 : 0;
     const totalBeforeTax = finalSubtotal + vipAmount;
-    const taxAmount = hasMissingPrice ? 0 : (totalBeforeTax * taxPercent) / 100;
-    const finalTotal = hasMissingPrice ? 0 : totalBeforeTax + taxAmount;
+    const appliedDiscount = await applyDiscountToBeforeTax(
+      discountCode,
+      hasMissingPrice ? 0 : totalBeforeTax,
+      hasMissingPrice ? 0 : taxPercent,
+    );
+    if (!appliedDiscount.ok) {
+      return errorResponse(res, 400, appliedDiscount.message, null);
+    }
+    const taxAmount = appliedDiscount.taxAmount;
+    const finalTotal = hasMissingPrice ? 0 : appliedDiscount.total;
 
     return successResponse(
       res,
@@ -1875,6 +2216,8 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
           hasVip,
           taxPercent: taxPercent,
           taxAmount: taxAmount,
+          discountCode: appliedDiscount.code,
+          discountToman: appliedDiscount.discountToman,
           total: finalTotal,
           hasMissingPrice: hasMissingPrice,
           vipInfo: vipItem
@@ -1955,6 +2298,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       .orderBy(asc(tooth.toothnumber));
 
     const otherServiceTitles: string[] = [];
+    const volumeFields: { label: string; value: string }[] = [];
     const deviceTitles = new Set<string>();
     const fileIds: number[] = [];
     const directPathFiles: {
@@ -1975,9 +2319,12 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
 
       if (toothItem.volume && Array.isArray(toothItem.volume)) {
         for (const vol of toothItem.volume) {
-          if (vol.title) {
-            otherServiceTitles.push(vol.title);
-          }
+          const label = volumeFieldLabel(toothItem.toothnumber, vol);
+          if (!label) continue;
+          volumeFields.push({
+            label,
+            value: volumeFieldValue(vol),
+          });
         }
       }
 
@@ -2124,7 +2471,8 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       doctorName: orderUser
         ? `${orderUser.name} ${orderUser.lastName}`.trim()
         : "-",
-      patientName: order.patientname || "-",
+      patientName:
+        patientFullName(order.patientname, order.patientlastname) || "-",
       gender: getGenderLabel(order.patientgender),
       colorType: firstToothWithShade?.colorCategoryTitle || "-",
       colorSystem: firstToothWithShade?.colorTitle || "VITA Classic",
@@ -2134,6 +2482,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         categoryName: t.categoryName || "-",
         colorLabel: buildToothColorLabel(t),
       })),
+      volumes: volumeFields,
       otherServices:
         otherServiceTitles.length > 0
           ? [...new Set(otherServiceTitles)].join(" / ")
@@ -2265,26 +2614,52 @@ export const addOrderToDesigner = async (req: Request, res: Response) => {
 export const orderlistdesinger = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    const filters = readOrderListFilters(req);
+    if (!filters.ok) return errorResponse(res, 400, filters.error, null);
+
     const { limit, offset, sort } = getPagination(req);
     const orderByClause =
       sort === "asc" ? asc(orders.createdAt) : desc(orders.createdAt);
+    const whereClause = combineFilters(
+      eq(orders.designer_id, user.userId),
+      filters.status ? eq(orders.status, filters.status) : undefined,
+      filters.paymentStatus
+        ? eq(payment.status, filters.paymentStatus)
+        : undefined,
+      filters.vip === undefined ? undefined : eq(orders.vip, filters.vip),
+      matchesText(filters.q, [
+        orders.id,
+        orders.title,
+        orders.patientname,
+        orders.patientlastname,
+        orders.comment,
+      ]),
+    );
     const [{ total }] = await db
       .select({ total: count() })
       .from(orders)
-      .leftJoin(users, eq(users.id, orders.designer_id));
+      .leftJoin(payment, eq(payment.order_id, orders.id))
+      .where(whereClause);
 
     const ordersList = await db
       .select({
         id: orders.id,
         title: orders.title,
+        status: orders.status,
+        patientname: orders.patientname,
+        patientlastname: orders.patientlastname,
+        report: orders.report,
         file: orders.file,
         adminFile: orders.adminFile,
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,
+        doctorName: orderOwner.name,
+        doctorLastName: orderOwner.lastName,
       })
       .from(orders)
       .leftJoin(payment, eq(payment.order_id, orders.id))
-      .where(eq(orders.designer_id, user.userId))
+      .leftJoin(orderOwner, eq(orderOwner.id, orders.user_id))
+      .where(whereClause)
       .orderBy(orderByClause)
       .limit(limit)
       .offset(offset);
@@ -2308,6 +2683,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
 
     /* ------------------ FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
+    const ticketMap = await loadOrderTickets(orderIds);
     const allOrderFiles = await db
       .select({
         orderId: orderFiles.orderId,
@@ -2344,7 +2720,12 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
         const orderFilesList = filesByOrderId[order.id] ?? [];
 
         if (!teethIds.length) {
-          return { ...order, categories: [], files: orderFilesList };
+          return {
+            ...order,
+            categories: [],
+            files: orderFilesList,
+            tickets: ticketMap.get(order.id) ?? [],
+          };
         }
 
         const teethCategories = await db
@@ -2370,6 +2751,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
           ...order,
           teeth: teethCategories,
           files: orderFilesList,
+          tickets: ticketMap.get(order.id) ?? [],
         };
       }),
     );
@@ -2389,6 +2771,34 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
       "list fetched successfully",
     );
   } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
+export const uploadOrderAttachment = async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file) {
+      return errorResponse(res, 400, "فایل الزامی است", null);
+    }
+
+    const user = (req as any).user;
+    const storedPath = file.path.replace(/\\/g, "/");
+    const [record] = await db
+      .insert(files)
+      .values({
+        filename: path.basename(storedPath).slice(0, 255),
+        originalname: (file.originalname || path.basename(storedPath)).slice(0, 255),
+        mimetype: (file.mimetype || "application/octet-stream").slice(0, 100),
+        size: file.size,
+        path: storedPath,
+        user_id: user?.userId || user?.id || null,
+      })
+      .returning();
+
+    return successResponse(res, 200, record, "File uploaded successfully");
+  } catch (error) {
+    console.error("Error uploading order file:", error);
     return errorResponse(res, 500, "Internal server error", error);
   }
 };

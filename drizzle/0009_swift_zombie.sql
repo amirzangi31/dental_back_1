@@ -1,0 +1,1 @@
+ALTER TABLE "orders" ADD COLUMN "patientlastname" varchar(255);
