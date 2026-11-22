@@ -12,11 +12,13 @@ import {
   startZarinpalPayment,
   zarinpalCallback,
 } from "./payment.controller";
+import { payOrderWithWallet } from "../wallet/wallet.controller";
 
 const router = express.Router();
 
 router.get("/zarinpal/callback", zarinpalCallback);
 router.post("/zarinpal/request/:orderId", auth, startZarinpalPayment);
+router.post("/wallet/:orderId", auth, payOrderWithWallet);
 router.get("/payments", auth, getPayments);
 router.get("/payment/:id", auth, getPaymentById);
 router.post("/payment", auth, uploadSingle("file"), createPayment);

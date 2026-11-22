@@ -14,11 +14,11 @@ import { materialshade } from "../../../db/schema/materialshade";
 import {
   ensurePendingPayment,
   findOrderPayment,
+  settlePaymentInTransaction,
   tomanAmount,
 } from "./orderPayment";
 import { requestZarinpalPayment, verifyZarinpalPayment } from "./zarinpal";
-import { issueInvoiceForSettlement } from "../invoice/issueInvoice";
-import { readInvoiceByOrderId } from "../invoice/readInvoice";
+import { creditWalletTopup, WalletTopupOutcome } from "../wallet/walletLedger";
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
@@ -301,59 +301,10 @@ export const acceptPayment = async (_req: Request, res: Response) => {
   return errorResponse(res, 400, "Receipt payment is disabled", null);
 };
 
-const settleVerifiedPayment = async (
+const settleVerifiedPayment = (
   paymentId: number,
   refId: string | null,
-) => {
-  return db.transaction(async (tx) => {
-    const [current] = await tx
-      .select()
-      .from(payment)
-      .where(eq(payment.id, paymentId))
-      .for("update");
-
-    if (!current) return null;
-    if (current.status === "paid") {
-      const existingInvoice = current.order_id
-        ? await readInvoiceByOrderId(current.order_id, tx)
-        : null;
-      return { payment: current, alreadyPaid: true, invoice: existingInvoice };
-    }
-
-    const [updatedPayment] = await tx
-      .update(payment)
-      .set({
-        status: "paid",
-        isAccepted: true,
-        refId,
-        updatedAt: new Date(),
-      })
-      .where(eq(payment.id, paymentId))
-      .returning();
-
-    if (current.order_id) {
-      await tx
-        .update(orders)
-        .set({
-          paymentstatus: true,
-          status: "check",
-          updatedAt: new Date(),
-        })
-        .where(eq(orders.id, current.order_id));
-    }
-
-    const issuedInvoice = current.order_id
-      ? await issueInvoiceForSettlement(tx, {
-          orderId: current.order_id,
-          paymentId,
-          paidToman: current.amount ?? 0,
-          trackingCode: refId,
-        })
-      : null;
-
-    return { payment: updatedPayment, alreadyPaid: false, invoice: issuedInvoice };
-  });
-};
+) => db.transaction((tx) => settlePaymentInTransaction(tx, paymentId, refId));
 
 export const startZarinpalPayment = async (req: Request, res: Response) => {
   try {
@@ -443,6 +394,12 @@ function appReturnUrl(): string {
   }
 }
 
+function walletReturnUrl(outcome: WalletTopupOutcome): string {
+  const destination = new URL("/dashboard/wallet", appReturnUrl());
+  destination.searchParams.set("topup", outcome);
+  return destination.toString();
+}
+
 export const zarinpalCallback = async (req: Request, res: Response) => {
   const returnToApp = () => res.redirect(302, appReturnUrl());
 
@@ -460,6 +417,8 @@ export const zarinpalCallback = async (req: Request, res: Response) => {
       .where(eq(payment.authority, authority));
 
     if (!paymentRow) {
+      const outcome = await creditWalletTopup(authority, gatewayStatus);
+      if (outcome) return res.redirect(302, walletReturnUrl(outcome));
       return returnToApp();
     }
 

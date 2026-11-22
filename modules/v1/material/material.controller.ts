@@ -53,10 +53,7 @@ export const createMaterial = async (req: Request, res: Response) => {
           ? parseInt(color)
           : null,
       descriptionStatus: descriptionStatus ? descriptionStatus : "none",
-      inputRequired:
-        descriptionStatus && descriptionStatus !== "none"
-          ? parseInputRequired(inputRequired)
-          : false,
+      inputRequired: parseInputRequired(inputRequired),
       materialcategory:
         materialcategory &&
         materialcategory !== "null" &&
@@ -386,10 +383,7 @@ export const updateMaterial = async (req: Request, res: Response) => {
       descriptionStatus: req.body.descriptionStatus
         ? req.body.descriptionStatus
         : "none",
-      inputRequired:
-        req.body.descriptionStatus && req.body.descriptionStatus !== "none"
-          ? parseInputRequired(req.body.inputRequired)
-          : false,
+      inputRequired: parseInputRequired(req.body.inputRequired),
       materialcategory:
         req.body.materialcategory &&
         req.body.materialcategory !== "null" &&

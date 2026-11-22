@@ -10,7 +10,7 @@ import {
 import { orders } from "./orders";
 
 export const paymentStatusEnum = ["pending", "paid", "failed"] as const;
-export const paymentTypeEnum = ["uploadfile", "paypal", "zarinpal"] as const;
+export const paymentTypeEnum = ["uploadfile", "paypal", "zarinpal", "wallet"] as const;
 export type PaymentStatus = (typeof paymentStatusEnum)[number];
 
 export const paymentStatusPgEnum = pgEnum("paymentStatus", paymentStatusEnum);

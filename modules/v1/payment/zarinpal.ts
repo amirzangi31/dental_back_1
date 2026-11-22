@@ -1,6 +1,7 @@
 import ZarinPal from "zarinpal-node-sdk";
 
-const minimumToman = 1000;
+export const zarinpalMinimumToman = 1000;
+const minimumToman = zarinpalMinimumToman;
 
 export const getZarinpalClient = () => {
   const merchantId = process.env.ZARINPAL_MERCHANT_ID;

@@ -1897,6 +1897,47 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
   }
 };
 
+export const confirmPayment = async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const [order] = await db.select().from(orders).where(eq(orders.id, +id));
+    if (!order) return errorResponse(res, 404, "Order not found", null);
+
+    const existing = await findOrderPayment(+id);
+    const alreadyPaid = existing?.status === "paid";
+
+    if (!alreadyPaid) {
+      const settled = await settleUnpaidOrderByAdmin(+id);
+      if (!settled) {
+        return errorResponse(res, 400, "Payment could not be confirmed", null);
+      }
+    }
+
+    const shouldMoveToCheck =
+      order.status === "payment" || order.status === "uploadfile";
+    if (shouldMoveToCheck) {
+      await db
+        .update(orders)
+        .set({
+          status: "check",
+          paymentstatus: true,
+          updatedAt: new Date(),
+        })
+        .where(eq(orders.id, +id));
+    }
+
+    const [updated] = await db.select().from(orders).where(eq(orders.id, +id));
+    return successResponse(
+      res,
+      200,
+      { order: updated, alreadyPaid },
+      alreadyPaid ? "Payment was already confirmed" : "Payment confirmed",
+    );
+  } catch (error) {
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
 export const uploadDesignerFile = async (req: Request, res: Response) => {
   try {
     const { orderId } = req.params;
@@ -2482,6 +2523,9 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         categoryName: t.categoryName || "-",
         colorLabel: buildToothColorLabel(t),
       })),
+      connections: Array.isArray(order.connections)
+        ? order.connections.map((connection: unknown) => Number(connection))
+        : [],
       volumes: volumeFields,
       otherServices:
         otherServiceTitles.length > 0

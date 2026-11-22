@@ -3,6 +3,7 @@ import { db } from "../../../db";
 import { orders, OrderStatus } from "../../../db/schema/orders";
 import { payment } from "../../../db/schema/payment";
 import { issueInvoiceForSettlement } from "../invoice/issueInvoice";
+import { readInvoiceByOrderId } from "../invoice/readInvoice";
 
 export const workOrderStatuses: OrderStatus[] = [
   "check",
@@ -156,4 +157,57 @@ export const settleUnpaidOrderByAdmin = async (
 
     return updatedPayment;
   });
+};
+
+export const settlePaymentInTransaction = async (
+  tx: any,
+  paymentId: number,
+  refId: string | null,
+) => {
+  const [current] = await tx
+    .select()
+    .from(payment)
+    .where(eq(payment.id, paymentId))
+    .for("update");
+
+  if (!current) return null;
+  if (current.status === "paid") {
+    const existingInvoice = current.order_id
+      ? await readInvoiceByOrderId(current.order_id, tx)
+      : null;
+    return { payment: current, alreadyPaid: true, invoice: existingInvoice };
+  }
+
+  const [updatedPayment] = await tx
+    .update(payment)
+    .set({
+      status: "paid",
+      isAccepted: true,
+      refId,
+      updatedAt: new Date(),
+    })
+    .where(eq(payment.id, paymentId))
+    .returning();
+
+  if (current.order_id) {
+    await tx
+      .update(orders)
+      .set({
+        paymentstatus: true,
+        status: "check",
+        updatedAt: new Date(),
+      })
+      .where(eq(orders.id, current.order_id));
+  }
+
+  const issuedInvoice = current.order_id
+    ? await issueInvoiceForSettlement(tx, {
+        orderId: current.order_id,
+        paymentId,
+        paidToman: current.amount ?? 0,
+        trackingCode: refId,
+      })
+    : null;
+
+  return { payment: updatedPayment, alreadyPaid: false, invoice: issuedInvoice };
 };

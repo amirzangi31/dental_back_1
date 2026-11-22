@@ -92,6 +92,20 @@
       "when": 1795261757611,
       "tag": "0012_salty_patch",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795346407221,
+      "tag": "0013_wallet",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795430000000,
+      "tag": "0014_wallet_admin",
+      "breakpoints": true
     }
   ]
 }

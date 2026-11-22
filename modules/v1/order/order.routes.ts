@@ -13,6 +13,7 @@ import {
   downloadAdminFile,
   calculateOrderPrice,
   generateMaterialFilesPDF,
+  confirmPayment,
   addOrderToDesigner,
   orderlistdesinger,
   uploadDesignerFile,
@@ -58,4 +59,5 @@ router.put(
 );
 router.get("/download-admin-file/:id", auth, downloadAdminFile);
 router.put("/order/:id/assign-designer", auth, isAdmin, addOrderToDesigner);
+router.post("/order/:id/confirm-payment", auth, isAdmin, confirmPayment);
 export default router;

@@ -32,6 +32,7 @@ export type OrderPdfData = {
     categoryName: string;
     colorLabel: string;
   }[];
+  connections?: number[];
   volumes: { label: string; value: string }[];
   otherServices: string;
   downloadableFiles: DownloadableFile[];
@@ -59,6 +60,45 @@ const setupFont = (doc: any) => {
     doc.registerFont("fa", fontPath);
     doc.font("fa");
   }
+};
+
+const CONNECTION_PAIRS: Record<number, [number, number]> = {
+  1: [27, 28],
+  2: [26, 27],
+  3: [25, 26],
+  4: [24, 25],
+  5: [23, 24],
+  6: [22, 23],
+  7: [21, 22],
+  8: [11, 21],
+  9: [18, 17],
+  10: [17, 16],
+  11: [16, 15],
+  12: [14, 15],
+  13: [14, 13],
+  14: [12, 13],
+  15: [12, 11],
+  16: [48, 47],
+  17: [47, 46],
+  18: [46, 45],
+  19: [45, 44],
+  20: [44, 43],
+  21: [42, 43],
+  22: [41, 42],
+  23: [31, 41],
+  24: [32, 31],
+  25: [33, 32],
+  26: [33, 34],
+  27: [34, 35],
+  28: [35, 36],
+  29: [36, 37],
+  30: [37, 38],
+};
+
+const shapeRtlName = (value: string) => {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return value;
+  return parts.reverse().join(" ");
 };
 
 const drawFieldBox = (
@@ -109,6 +149,34 @@ const drawSectionTitle = (
     });
 };
 
+const drawConnectionDots = (
+  doc: any,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  numbers: number[],
+) => {
+  if (!numbers.length) return;
+  const radius = 7;
+  const gap = 4;
+  const total = numbers.length * radius * 2 + (numbers.length - 1) * gap;
+  let cx = x + (width - total) / 2 + radius;
+  const cy = y + height - 12;
+
+  numbers.forEach((number) => {
+    doc.save();
+    doc.circle(cx, cy, radius).fill("#17C964");
+    doc.fillColor("#FFFFFF").fontSize(8).text(String(number), cx - radius, cy - 3.5, {
+      width: radius * 2,
+      align: "center",
+      lineBreak: false,
+    });
+    doc.restore();
+    cx += radius * 2 + gap;
+  });
+};
+
 const drawToothBox = (
   doc: any,
   x: number,
@@ -118,6 +186,7 @@ const drawToothBox = (
   toothnumber: number | null,
   colorLabel: string,
   categoryName: string,
+  connectionNumbers: number[] = [],
 ) => {
   doc.save();
   doc.roundedRect(x, y, width, height, BOX_RADIUS).fill(BOX_BG);
@@ -151,6 +220,8 @@ const drawToothBox = (
       align: "center",
       lineGap: 1,
     });
+
+  drawConnectionDots(doc, x, y, width, height, connectionNumbers);
 };
 
 const LINK_COLOR = "#2563EB";
@@ -286,8 +357,8 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
   const col4Width = (CONTENT_WIDTH - GAP * 3) / 4;
   const rowFields = [
     { label: "نوع کاربری", value: data.userType },
-    { label: "نام پزشک", value: data.doctorName },
-    { label: "نام بیمار", value: data.patientName },
+    { label: "نام پزشک", value: shapeRtlName(data.doctorName) },
+    { label: "نام بیمار", value: shapeRtlName(data.patientName) },
     { label: "جنسیت", value: data.gender },
   ];
 
@@ -324,9 +395,20 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
 
   const teethCols = 4;
   const toothBoxWidth = (CONTENT_WIDTH - GAP * (teethCols - 1)) / teethCols;
-  const toothBoxHeight = 62;
+  const toothBoxHeight = 78;
   let teethY = y;
   let teethCol = 0;
+  const presentTeeth = new Set(
+    data.teeth
+      .map((toothItem) => toothItem.toothnumber)
+      .filter((toothNumber): toothNumber is number => toothNumber !== null),
+  );
+  const activeConnections = (data.connections ?? [])
+    .map((connection) => Number(connection))
+    .filter((connection) => {
+      const pair = CONNECTION_PAIRS[connection];
+      return !!pair && presentTeeth.has(pair[0]) && presentTeeth.has(pair[1]);
+    });
 
   data.teeth.forEach((toothItem) => {
     if (
@@ -338,6 +420,9 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
     }
 
     const boxX = MARGIN + teethCol * (toothBoxWidth + GAP);
+    const connectionNumbers = activeConnections.filter((connection) =>
+      CONNECTION_PAIRS[connection]?.includes(toothItem.toothnumber ?? -1),
+    );
     drawToothBox(
       doc,
       boxX,
@@ -347,6 +432,7 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
       toothItem.toothnumber,
       toothItem.colorLabel,
       toothItem.categoryName,
+      connectionNumbers,
     );
 
     teethCol += 1;
