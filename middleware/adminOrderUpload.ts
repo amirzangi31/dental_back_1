@@ -1,10 +1,10 @@
 import multer from "multer";
-import path from "path";
 import { Request } from "express";
 import { errorResponse } from "../utils/responses";
 import { Response, NextFunction } from "express";
 import fs from "fs";
 import { isAllowedUploadFile } from "./upload";
+import { normalizeUploadedRequest, storedUploadFilename } from "../utils/uploadFilename";
 
 // ایجاد پوشه order-files در صورت عدم وجود
 const orderFilesDir = "order-files";
@@ -16,11 +16,8 @@ const storage = multer.diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
     cb(null, orderFilesDir + "/");
   },
-  filename: (req: Request, file: Express.Multer.File, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+  filename: (_req: Request, file: Express.Multer.File, cb) => {
+    cb(null, storedUploadFilename(file.originalname));
   },
 });
 
@@ -62,9 +59,7 @@ export const uploadAdminOrderFile = (fieldName: string = "file") => {
         }
         return errorResponse(res, 400, err.message || "خطا در آپلود فایل", err);
       }
-      if (req.file && req.file.path) {
-        req.file.path = req.file.path.replace(/\\/g, "/");
-      }
+      normalizeUploadedRequest(req);
       next();
     });
   };

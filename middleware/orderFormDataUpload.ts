@@ -6,6 +6,7 @@ import fs from "fs";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { files as filesTable } from "../db/schema/files";
+import { normalizeUploadedRequest, storedUploadFilename } from "../utils/uploadFilename";
 
 const orderFilesDir = "order-files";
 if (!fs.existsSync(orderFilesDir)) {
@@ -16,15 +17,8 @@ const storage = multer.diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
     cb(null, orderFilesDir + "/");
   },
-  filename: (req: Request, file: Express.Multer.File, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const rawExt = path.extname(file.originalname);
-    const ext = rawExt.replace(/[\\/\0]/g, "").slice(0, 32);
-    const name = path
-      .basename(file.originalname, rawExt)
-      .replace(/[^\w.\- ()\u0600-\u06FF]+/g, "_")
-      .slice(0, 80);
-    cb(null, `${name || "file"}-${uniqueSuffix}${ext}`);
+  filename: (_req: Request, file: Express.Multer.File, cb) => {
+    cb(null, storedUploadFilename(file.originalname));
   },
 });
 
@@ -49,9 +43,7 @@ const handleUploadError = (err: unknown, res: Response) => {
 export const uploadSingleOrderFile = (req: Request, res: Response, next: NextFunction) => {
   upload.single("file")(req, res, (err) => {
     if (err) return handleUploadError(err, res);
-    if (req.file?.path) {
-      req.file.path = req.file.path.replace(/\\/g, "/");
-    }
+    normalizeUploadedRequest(req);
     next();
   });
 };
@@ -107,6 +99,7 @@ export const processOrderFormData = (
     }
 
     try {
+      normalizeUploadedRequest(req);
       let orderData: any = {};
 
       if (req.body && req.body.orderData) {

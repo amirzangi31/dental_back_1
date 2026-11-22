@@ -31,6 +31,7 @@ import materialCategoryRoutes from "./modules/v1/materialcategory/materialcatego
 
 // Middleware
 import { setHeaders } from "./middleware/headers";
+import { originalDownloadNameHeader } from "./middleware/originalFileDownload";
 import { errorResponse } from "./utils/responses";
 
 const app = express();
@@ -126,6 +127,7 @@ app.use(
     },
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Accept", "Origin"],
+    exposedHeaders: ["Content-Disposition"],
     credentials: true,
   })
 );
@@ -161,6 +163,7 @@ if (process.env.NODE_ENV !== "production") {
 const uploadsPath = path.join(process.cwd(), "uploads");
 
 
+app.use("/uploads", originalDownloadNameHeader("uploads"));
 app.use(
   "/uploads",
   express.static(uploadsPath, {
@@ -173,6 +176,7 @@ app.use(
 
 const orderFilesPath = path.join(process.cwd(), "order-files");
 
+app.use("/order-files", originalDownloadNameHeader("order-files"));
 app.use(
   "/order-files",
   express.static(orderFilesPath, {

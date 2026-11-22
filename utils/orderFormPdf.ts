@@ -1,5 +1,6 @@
 import path from "path";
 import fs from "fs";
+import { enablePersianPdfText } from "./persianPdfText";
 
 const PAGE_WIDTH = 595.28;
 const MARGIN = 28;
@@ -59,6 +60,7 @@ const setupFont = (doc: any) => {
   if (fontPath) {
     doc.registerFont("fa", fontPath);
     doc.font("fa");
+    enablePersianPdfText(doc);
   }
 };
 
@@ -93,12 +95,6 @@ const CONNECTION_PAIRS: Record<number, [number, number]> = {
   28: [35, 36],
   29: [36, 37],
   30: [37, 38],
-};
-
-const shapeRtlName = (value: string) => {
-  const parts = value.trim().split(/\s+/).filter(Boolean);
-  if (parts.length < 2) return value;
-  return parts.reverse().join(" ");
 };
 
 const drawFieldBox = (
@@ -357,8 +353,8 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
   const col4Width = (CONTENT_WIDTH - GAP * 3) / 4;
   const rowFields = [
     { label: "نوع کاربری", value: data.userType },
-    { label: "نام پزشک", value: shapeRtlName(data.doctorName) },
-    { label: "نام بیمار", value: shapeRtlName(data.patientName) },
+    { label: "نام پزشک", value: data.doctorName },
+    { label: "نام بیمار", value: data.patientName },
     { label: "جنسیت", value: data.gender },
   ];
 
@@ -699,5 +695,5 @@ export const buildFileDownloadUrl = (baseUrl: string, filePath: string) => {
   const cleanPath = normalized.startsWith("/")
     ? normalized.slice(1)
     : normalized;
-  return `${baseUrl.replace(/\/$/, "")}/${cleanPath}`;
+  return `${baseUrl.replace(/\/$/, "")}/${cleanPath}?download=1`;
 };

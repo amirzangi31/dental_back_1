@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { enablePersianPdfText } from "../../../utils/persianPdfText";
 import { InvoiceDocument, InvoiceParty, InvoiceSeller } from "./invoiceDocument";
 
 const PAGE_WIDTH = 841.89;
@@ -25,13 +26,19 @@ const setupFont = (doc: any) => {
     doc._invoiceFontReady = true;
   }
   doc.font("fa");
+  enablePersianPdfText(doc);
 };
 
-const latinNumber = new Intl.NumberFormat("fa-IR-u-nu-latn");
+const formatGrouped = (value: number) => {
+  const negative = value < 0;
+  const digits = Math.round(Math.abs(value)).toString();
+  const grouped = digits.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return negative ? `-${grouped}` : grouped;
+};
 
 const formatRial = (value: number | null | undefined) => {
   if (value === null || value === undefined || value === 0) return "";
-  return latinNumber.format(value);
+  return formatGrouped(value);
 };
 
 const formatIssuedAt = (iso: string) =>

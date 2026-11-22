@@ -19,7 +19,7 @@ import {
   uploadDesignerFile,
   uploadOrderAttachment,
 } from "./order.controller";
-import { uploadSingle, uploadMultipleWithPathFix } from "../../../middleware/upload";
+import { uploadDesignerFiles, uploadMultipleWithPathFix } from "../../../middleware/upload";
 import { uploadAdminOrderFile } from "../../../middleware/adminOrderUpload";
 import { processOrderFormData, uploadSingleOrderFile } from "../../../middleware/orderFormDataUpload";
 import { isAdmin } from "../../../middleware/isAdmin";
@@ -42,7 +42,7 @@ router.put("/order/:id", auth, updateOrder);
 router.put(
   "/order/uploaddesignerfile/:orderId",
   auth,
-  uploadSingle("file"),
+  uploadDesignerFiles("files", 10),
   uploadDesignerFile
 );
 router.put("/submitorderwithuser/:id", auth, uploadMultipleWithPathFix("files", 20), submitOrder);

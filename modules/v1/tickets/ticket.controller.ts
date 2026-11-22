@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import path from "path";
 import { db } from "../../../db";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { statusEnum, TicketStatus, ticketMessages, tickets } from "../../../db/schema/ticket";
@@ -18,6 +19,56 @@ const lastMessageSenderType = sql`(
 )`;
 
 const ticketIsOpen = or(isNull(tickets.ticketStatus), ne(tickets.ticketStatus, "close"));
+
+function sessionUserId(req: Request) {
+  const user = (req as any).user;
+  const id = Number(user?.userId || user?.id);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+async function resolveTicketAttachment(
+  req: Request,
+): Promise<{ path: string | null; error?: string }> {
+  const userId = sessionUserId(req);
+  const uploaded = req.file;
+
+  if (uploaded) {
+    const storedPath = uploaded.path.replace(/\\/g, "/");
+    await db.insert(files).values({
+      filename: path.basename(storedPath).slice(0, 255),
+      originalname: (uploaded.originalname || "file").slice(0, 255),
+      mimetype: (uploaded.mimetype || "application/octet-stream").slice(0, 100),
+      size: uploaded.size,
+      path: storedPath,
+      user_id: userId,
+    });
+    return { path: storedPath };
+  }
+
+  const rawFileId = req.body?.fileId;
+  if (rawFileId === undefined || rawFileId === null || rawFileId === "") {
+    return { path: null as string | null };
+  }
+
+  const fileId = Number(rawFileId);
+  if (!Number.isInteger(fileId) || fileId <= 0 || userId === null) {
+    return { path: null, error: "فایل پیوست معتبر نیست" };
+  }
+
+  const [owned] = await db
+    .select({ path: files.path })
+    .from(files)
+    .where(
+      and(
+        eq(files.id, fileId),
+        eq(files.user_id, userId),
+        or(eq(files.isDeleted, 0), isNull(files.isDeleted)),
+      ),
+    );
+
+  if (!owned) return { path: null, error: "فایل پیوست معتبر نیست" };
+  return { path: owned.path };
+}
 
 function countUnansweredMessages(
   messagesNewestFirst: { senderType: string }[],
@@ -254,7 +305,6 @@ export const createTicket = async (req: Request, res: Response) => {
   try {
     const { orderId, subject, message, userId } = req.body;
     const user = (req as any).user;
-    const file = req.file;
     const hasOrder = orderId !== undefined && orderId !== null && orderId !== "" && orderId !== "0" && orderId !== 0;
     let order: typeof orders.$inferSelect | undefined;
 
@@ -315,6 +365,9 @@ export const createTicket = async (req: Request, res: Response) => {
       return errorResponse(res, 400, "Invalid orderId", null);
     }
 
+    const attached = await resolveTicketAttachment(req);
+    if (attached.error) return errorResponse(res, 400, attached.error, null);
+
     const [newTicket] = await db
       .insert(tickets)
       .values({
@@ -331,27 +384,14 @@ export const createTicket = async (req: Request, res: Response) => {
         .where(eq(orders.id, +orderId));
     }
 
-    if (file) {
-      const fileRecord = await db
-        .insert(files)
-        .values({
-          filename: file.filename,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-          path: file.path,
-          user_id: (req as any).user?.id || null,
-        })
-        .returning();
-    }
     const msg = await db
       .insert(ticketMessages)
       .values({
         ticketId: newTicket.id,
-        senderId: user.userId,
+        senderId: Number(user.userId),
         senderType: user.role === "admin" ? "admin" : "user",
-        message,
-        file: file?.path,
+        message: message ?? "",
+        file: attached.path,
       })
       .returning();
 
@@ -413,7 +453,6 @@ export const createTicketMessage = async (req: Request, res: Response) => {
   try {
     const { ticketId, message } = req.body;
     const user = (req as any).user;
-    const file = req.file;
     const parsedTicketId = Number(ticketId);
 
     const [ticket] = await db.select().from(tickets).where(eq(tickets.id, parsedTicketId));
@@ -427,28 +466,17 @@ export const createTicketMessage = async (req: Request, res: Response) => {
       return errorResponse(res, 403, "You are not authorized to update this ticket", null);
     }
 
-    if (file) {
-      await db
-        .insert(files)
-        .values({
-          filename: file.filename,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-          path: file.path,
-          user_id: (req as any).user?.userId || null,
-        })
-        .returning();
-    }
+    const attached = await resolveTicketAttachment(req);
+    if (attached.error) return errorResponse(res, 400, attached.error, null);
 
     const msg = await db
       .insert(ticketMessages)
       .values({
-        ticketId,
-        senderId: user.userId,
+        ticketId: parsedTicketId,
+        senderId: Number(user.userId),
         senderType: user.role === "admin" ? "admin" : "user",
-        message,
-        file: file?.path,
+        message: message ?? "",
+        file: attached.path,
       })
       .returning();
 
@@ -457,6 +485,31 @@ export const createTicketMessage = async (req: Request, res: Response) => {
     return errorResponse(res, 500, "Internal server error", error);
   }
 };
+export const uploadTicketFile = async (req: Request, res: Response) => {
+  try {
+    const file = req.file;
+    if (!file) return errorResponse(res, 400, "فایل الزامی است", null);
+
+    const storedPath = file.path.replace(/\\/g, "/");
+    const [record] = await db
+      .insert(files)
+      .values({
+        filename: path.basename(storedPath).slice(0, 255),
+        originalname: (file.originalname || "file").slice(0, 255),
+        mimetype: (file.mimetype || "application/octet-stream").slice(0, 100),
+        size: file.size,
+        path: storedPath,
+        user_id: sessionUserId(req),
+      })
+      .returning();
+
+    return successResponse(res, 200, record, "File uploaded successfully");
+  } catch (error) {
+    console.log(error);
+    return errorResponse(res, 500, "Internal server error", error);
+  }
+};
+
 export const deleteTicketMessage = async (req: Request, res: Response) => {
   try {
     const messageId = Number(req.params.id);

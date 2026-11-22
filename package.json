@@ -21,6 +21,7 @@
   "license": "ISC",
   "dependencies": {
     "bcryptjs": "^3.0.3",
+    "bidi-js": "^1.1.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "drizzle-orm": "^0.44.7",

@@ -23,6 +23,8 @@ import {
 } from "../../../utils/orderFormPdf";
 import path from "path";
 import fs from "fs";
+import { zipStoredFiles } from "../../../utils/zipFiles";
+import { downloadNameForStoredPath } from "../../../utils/storedFileDownload";
 import { vip } from "../../../db/schema/vip";
 import { getPagination } from "../../../utils/pagination";
 import {
@@ -389,7 +391,7 @@ export const createOrder = async (req: Request, res: Response) => {
         patientage: patientage ? parseInt(patientage, 10) : null,
         patientgender: patientgender || null,
         report: report ? parseInt(report, 10) : null,
-        status: "uploadfile" as OrderStatus,
+        status: "payment" as OrderStatus,
         totalaprice: String(finalTotal),
         paymentstatus: false,
         comment: comment || null,
@@ -494,6 +496,9 @@ export const createOrder = async (req: Request, res: Response) => {
       }
     }
 
+    const paymentRow = await ensurePendingPayment(createdOrder.id);
+    createdOrder.status = "payment";
+
     return successResponse(
       res,
       200,
@@ -501,7 +506,7 @@ export const createOrder = async (req: Request, res: Response) => {
         order: createdOrder,
         teeth: finalTeeth,
         teethIds,
-        payment: null,
+        payment: paymentRow,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
         discountCode: appliedDiscount.code,
@@ -761,6 +766,10 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
       );
     }
 
+    if (originalOrder.refrence != null || originalOrder.status !== "finaldelivery") {
+      return errorResponse(res, 400, "REDESIGN_NOT_ALLOWED", null);
+    }
+
     const originalOrderTeeth = await db
       .select()
       .from(orderTeeth)
@@ -1007,7 +1016,27 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const taxAmount = appliedDiscount.taxAmount;
     const finalTotal = appliedDiscount.total;
 
-    const { createdOrder, createdTeeth } = await db.transaction(async (tx) => {
+    const created = await db.transaction(async (tx) => {
+      const [locked] = await tx
+        .select()
+        .from(orders)
+        .where(eq(orders.id, +id))
+        .for("update");
+
+      if (!locked || locked.refrence != null || locked.status !== "finaldelivery") {
+        return { rejected: "REDESIGN_NOT_ALLOWED" as const };
+      }
+
+      const [existingRedesign] = await tx
+        .select({ id: orders.id })
+        .from(orders)
+        .where(and(eq(orders.refrence, +id), eq(orders.isDeleted, 0)))
+        .limit(1);
+
+      if (existingRedesign) {
+        return { rejected: "REDESIGN_ALREADY_USED" as const };
+      }
+
       const [orderRow]: any = await tx
         .insert(orders)
         .values({
@@ -1021,7 +1050,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
             : originalOrder.patientage || null,
           patientgender: patientgender || originalOrder.patientgender || null,
           report: null,
-          status: "uploadfile" as OrderStatus,
+          status: "payment" as OrderStatus,
           totalaprice: String(finalTotal),
           paymentstatus: false,
           comment: comment || null,
@@ -1047,8 +1076,14 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
       }));
       if (orderTeethData.length) await tx.insert(orderTeeth).values(orderTeethData);
 
-      return { createdOrder: orderRow, createdTeeth: teethRows };
+      return { rejected: null, createdOrder: orderRow, createdTeeth: teethRows };
     });
+
+    if (created.rejected) {
+      return errorResponse(res, 400, created.rejected, null);
+    }
+
+    const { createdOrder, createdTeeth } = created;
 
     const teethIds = createdTeeth.map((t) => t.id);
 
@@ -1128,6 +1163,9 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
       }
     }
 
+    const paymentRow = await ensurePendingPayment(createdOrder.id);
+    createdOrder.status = "payment";
+
     return successResponse(
       res,
       200,
@@ -1135,7 +1173,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         order: createdOrder,
         teeth: finalTeeth,
         teethIds,
-        payment: null,
+        payment: paymentRow,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
         discountCode: appliedDiscount.code,
@@ -1426,9 +1464,31 @@ export const submitOrder = async (req: Request, res: Response) => {
   }
 };
 
+const releaseUploadfileOrders = async (userId?: number) => {
+  const rows = await db
+    .select({ id: orders.id })
+    .from(orders)
+    .where(
+      combineFilters(
+        eq(orders.status, "uploadfile"),
+        eq(orders.isDeleted, 0),
+        userId === undefined ? undefined : eq(orders.user_id, userId),
+      ),
+    );
+
+  for (const row of rows) {
+    await ensurePendingPayment(row.id);
+    await db
+      .update(orders)
+      .set({ status: "payment" as OrderStatus, updatedAt: new Date() })
+      .where(eq(orders.id, row.id));
+  }
+};
+
 export const orderList = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
+    await releaseUploadfileOrders(user.userId);
     const filters = readOrderListFilters(req);
     if (!filters.ok) return errorResponse(res, 400, filters.error, null);
 
@@ -1523,6 +1583,17 @@ export const orderList = async (req: Request, res: Response) => {
     /* ------------------ CATEGORIES + FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
     const ticketMap = await loadOrderTickets(orderIds);
+    const redesignedRows = orderIds.length
+      ? await db
+          .select({ parentId: orders.refrence })
+          .from(orders)
+          .where(and(inArray(orders.refrence, orderIds), eq(orders.isDeleted, 0)))
+      : [];
+    const redesignedParentIds = new Set(
+      redesignedRows
+        .map((row) => row.parentId)
+        .filter((parentId): parentId is number => typeof parentId === "number"),
+    );
 
     const allOrderFiles = orderIds.length
       ? await db
@@ -1582,6 +1653,7 @@ export const orderList = async (req: Request, res: Response) => {
 
         return {
           ...order,
+          redesignUsed: redesignedParentIds.has(order.id),
           categories: uniqueCategories,
           files: filesByOrderId[order.id] ?? [],
           tickets: ticketMap.get(order.id) ?? [],
@@ -1671,6 +1743,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       );
     }
 
+    await releaseUploadfileOrders();
     const filters = readOrderListFilters(req);
     if (!filters.ok) return errorResponse(res, 400, filters.error, null);
 
@@ -1950,21 +2023,9 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
         null,
       );
     }
-    const file = req.file;
-    console.log("file : ----", file);
-    if (file) {
-      const fileRecord = await db
-        .insert(files)
-        .values({
-          filename: file.filename,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-          path: file.path,
-          user_id: (req as any).user?.id || null,
-        })
-        .returning();
-    }
+    const uploaded = (
+      Array.isArray(req.files) ? req.files : req.file ? [req.file] : []
+    ) as Express.Multer.File[];
     const [order] = await db
       .select()
       .from(orders)
@@ -1979,11 +2040,63 @@ export const uploadDesignerFile = async (req: Request, res: Response) => {
       );
     }
 
+    let adminFileValue: string | null = null;
+    if (uploaded.length > 0) {
+      const usedNames = new Set<string>();
+      const entries = uploaded.map((file) => {
+        const original = path.basename(file.originalname || file.filename || "file");
+        const ext = path.extname(original);
+        const base = path.basename(original, ext) || "file";
+        let name = `${base}${ext}`;
+        let index = 2;
+        while (usedNames.has(name)) {
+          name = `${base}-${index}${ext}`;
+          index += 1;
+        }
+        usedNames.add(name);
+        return { name, filePath: file.path };
+      });
+
+      if (entries.length === 1) {
+        adminFileValue = entries[0].filePath;
+      } else {
+        const zipName = `order-${orderId}-design-${Date.now()}.zip`;
+        adminFileValue = path.join("uploads", zipName).replace(/\\/g, "/");
+        await zipStoredFiles(entries, path.join(process.cwd(), adminFileValue));
+      }
+
+      const inserted = await db
+        .insert(files)
+        .values(
+          uploaded.map((file) => ({
+            filename: file.filename,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+            path: file.path,
+            user_id: user?.id || null,
+          })),
+        )
+        .returning();
+
+      await db
+        .delete(orderFiles)
+        .where(and(eq(orderFiles.orderId, +orderId), eq(orderFiles.role, "designer")));
+
+      await db.insert(orderFiles).values(
+        inserted.map((record) => ({
+          orderId: +orderId,
+          fileId: record.id,
+          role: "designer" as const,
+        })),
+      );
+    }
+
     await db
       .update(orders)
       .set({
         status: "design" as OrderStatus,
-        adminFile: file ? file.path : null,
+        adminFile: adminFileValue,
       })
       .where(eq(orders.id, +orderId));
     return successResponse(
@@ -2058,8 +2171,9 @@ export const downloadAdminFile = async (req: Request, res: Response) => {
     }
 
     const filePath = path.join(process.cwd(), order.adminFile);
+    const downloadName = await downloadNameForStoredPath(order.adminFile);
 
-    return res.download(filePath, (err) => {
+    return res.download(filePath, downloadName, (err) => {
       if (err) {
         console.error("Error downloading file:", err);
         return errorResponse(res, 500, "Error in file download", err);

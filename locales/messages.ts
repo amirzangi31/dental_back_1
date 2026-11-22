@@ -287,6 +287,16 @@ export const MESSAGES = {
     en: "Order is already paid",
     de: "Bestellung ist bereits bezahlt",
   },
+  REDESIGN_ALREADY_USED: {
+    fa: "برای این سفارش قبلاً یک‌بار طراحی مجدد ثبت شده و دیگر امکان‌پذیر نیست",
+    en: "This order has already been redesigned once",
+    de: "Für diese Bestellung wurde bereits eine Neugestaltung erfasst",
+  },
+  REDESIGN_NOT_ALLOWED: {
+    fa: "طراحی مجدد فقط یک‌بار و بعد از تحویل نهایی ممکن است",
+    en: "Redesign is only available once, after final delivery",
+    de: "Eine Neugestaltung ist nur einmal nach der Endlieferung möglich",
+  },
   ORDERS_FETCHED: {
     fa: "سفارش‌ها با موفقیت دریافت شدند",
     en: "Orders fetched successfully",

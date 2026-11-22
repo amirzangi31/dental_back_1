@@ -3,16 +3,14 @@ import path from "path";
 import { Request } from "express";
 import { errorResponse } from "../utils/responses";
 import { Response, NextFunction } from "express";
+import { normalizeUploadedRequest, storedUploadFilename } from "../utils/uploadFilename";
 
 const storage = multer.diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
     cb(null, "uploads/");
   },
-  filename: (req: Request, file: Express.Multer.File, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname);
-    const name = path.basename(file.originalname, ext);
-    cb(null, `${name}-${uniqueSuffix}${ext}`);
+  filename: (_req: Request, file: Express.Multer.File, cb) => {
+    cb(null, storedUploadFilename(file.originalname));
   },
 });
 
@@ -70,6 +68,16 @@ const upload = multer({
   },
 });
 
+const DESIGNER_MAX_FILE_BYTES = 50 * 1024 * 1024;
+
+const designerUpload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: DESIGNER_MAX_FILE_BYTES,
+  },
+});
+
 export const uploadSingle = (fieldName: string = "file") => {
   return (req: Request, res: Response, next: NextFunction) => {
     const uploadMiddleware = upload.single(fieldName);
@@ -91,6 +99,7 @@ export const uploadSingle = (fieldName: string = "file") => {
       if (req.file && req.file.path) {
         req.file.path = req.file.path.replace(/\\/g, "/");
       }
+      normalizeUploadedRequest(req);
       next();
     });
   };
@@ -134,6 +143,7 @@ export const uploadMultipleWithPathFix = (
         });
       }
 
+      normalizeUploadedRequest(req);
       next();
     });
   };
@@ -164,6 +174,7 @@ export const uploadSingleWithPathFix = (fieldName: string = "file") => {
       if (req.file && req.file.path) {
         req.file.path = req.file.path.replace(/\\/g, "/");
       }
+      normalizeUploadedRequest(req);
       next();
     });
   };
@@ -202,6 +213,7 @@ export const uploadFieldsWithPathFix = (
           }
         });
       }
+      normalizeUploadedRequest(req);
       next();
     });
   };
@@ -235,6 +247,7 @@ export const uploadMultiple = (
         }
         return errorResponse(res, 400, err.message || "خطا در آپلود فایل", err);
       }
+      normalizeUploadedRequest(req);
       next();
     });
   };
@@ -261,6 +274,51 @@ export const uploadFields = (
         }
         return errorResponse(res, 400, err.message || "خطا در آپلود فایل", err);
       }
+      normalizeUploadedRequest(req);
+      next();
+    });
+  };
+};
+
+export const uploadDesignerFiles = (
+  fieldName: string = "files",
+  maxCount: number = 10
+) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const uploadMiddleware = designerUpload.array(fieldName, maxCount);
+    uploadMiddleware(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return errorResponse(
+              res,
+              400,
+              "حجم فایل بیش از حد مجاز است (حداکثر 50MB)",
+              null
+            );
+          }
+          if (err.code === "LIMIT_FILE_COUNT") {
+            return errorResponse(
+              res,
+              400,
+              `تعداد فایل‌ها بیش از حد مجاز است (حداکثر ${maxCount})`,
+              null
+            );
+          }
+          return errorResponse(res, 400, "خطا در آپلود فایل", err);
+        }
+        return errorResponse(res, 400, err.message || "خطا در آپلود فایل", err);
+      }
+
+      if (Array.isArray(req.files)) {
+        req.files.forEach((file) => {
+          if (file.path) {
+            file.path = file.path.replace(/\\/g, "/");
+          }
+        });
+      }
+
+      normalizeUploadedRequest(req);
       next();
     });
   };
