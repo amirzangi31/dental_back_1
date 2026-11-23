@@ -45,7 +45,7 @@ router.put(
   uploadDesignerFiles("files", 10),
   uploadDesignerFile
 );
-router.put("/submitorderwithuser/:id", auth, uploadMultipleWithPathFix("files", 20), submitOrder);
+router.put("/submitorderwithuser/:id", auth, uploadMultipleWithPathFix("files", 10), submitOrder);
 router.get("/orderlist", auth, orderList);
 router.get("/orders/dropdown", auth, orderDropDown);
 router.get("/orderlistadmin", auth, orderListAdmin);

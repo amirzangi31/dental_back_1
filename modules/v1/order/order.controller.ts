@@ -44,8 +44,9 @@ import {
 } from "../payment/orderPayment";
 import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
+import { materialcategory } from "../../../db/schema/materialcategory";
 import { users } from "../../../db/schema/users";
-import { tickets } from "../../../db/schema/ticket";
+import { tickets, ticketMessages } from "../../../db/schema/ticket";
 import { parseDefinedPrice } from "../../../utils/parseDefinedPrice";
 import {
   applyDiscountToBeforeTax,
@@ -135,7 +136,8 @@ const loadOrderTickets = async (orderIds: number[]) => {
       createdAt: Date | null;
     }[]
   >();
-  if (!orderIds.length) return map;
+  const messageCount = new Map<number, number>();
+  if (!orderIds.length) return { tickets: map, messageCount };
 
   const rows = await db
     .select({
@@ -155,7 +157,30 @@ const loadOrderTickets = async (orderIds: number[]) => {
     list.push(row);
     map.set(row.orderId, list);
   }
-  return map;
+
+  if (rows.length > 0) {
+    const totals = await db
+      .select({
+        ticketId: ticketMessages.ticketId,
+        total: count(),
+      })
+      .from(ticketMessages)
+      .where(
+        inArray(
+          ticketMessages.ticketId,
+          rows.map((row) => row.id)
+        )
+      )
+      .groupBy(ticketMessages.ticketId);
+    const ticketOrder = new Map(rows.map((row) => [row.id, row.orderId]));
+    for (const row of totals) {
+      const orderId = ticketOrder.get(row.ticketId);
+      if (!orderId) continue;
+      messageCount.set(orderId, (messageCount.get(orderId) ?? 0) + Number(row.total));
+    }
+  }
+
+  return { tickets: map, messageCount };
 };
 
 const orderOwner = alias(users, "order_owner");
@@ -178,6 +203,32 @@ const readOrderListFilters = (req: Request) => {
     status: status.value,
     paymentStatus: paymentStatus.value,
     vip: vip.value,
+  };
+};
+
+const materialFileIds = (mat: {
+  file?: unknown;
+  files?: unknown;
+}): number[] => {
+  const ids: number[] = [];
+  const push = (value: unknown) => {
+    const parsed = typeof value === "number" ? value : Number(value);
+    if (Number.isInteger(parsed) && parsed > 0 && !ids.includes(parsed)) ids.push(parsed);
+  };
+  push(mat?.file);
+  if (Array.isArray(mat?.files)) mat.files.forEach(push);
+  return ids.slice(0, 10);
+};
+
+const storedMaterial = (mat: any) => {
+  const ids = materialFileIds(mat);
+  const file =
+    ids[0] ?? (typeof mat?.file === "string" && mat.file.trim() ? mat.file : null);
+  return {
+    material: mat?.material || null,
+    file,
+    files: ids,
+    text: mat?.text || null,
   };
 };
 
@@ -232,7 +283,7 @@ const findMissingRequiredMaterialInput = async (
         definition.descriptionStatus === "all";
       if (
         (needsText && materialInputIsEmpty(mat.text)) ||
-        (needsFile && materialInputIsEmpty(mat.file))
+        (needsFile && materialFileIds(mat).length === 0 && materialInputIsEmpty(mat.file))
       ) {
         return definition.title || String(definition.id);
       }
@@ -291,11 +342,7 @@ export const createOrder = async (req: Request, res: Response) => {
     const teethValues = teeth.map((t: any) => {
       const materialsData =
         t.materials && Array.isArray(t.materials)
-          ? t.materials.map((mat: any) => ({
-              material: mat.material || null,
-              file: mat.file || null,
-              text: mat.text || null,
-            }))
+          ? t.materials.map((mat: any) => storedMaterial(mat))
           : [];
 
       return {
@@ -890,10 +937,14 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
             fileValue === "" ||
             (typeof fileValue === "object" &&
               fileValue &&
+              !Array.isArray(fileValue) &&
               Object.keys(fileValue).length === 0);
-          if (isFileEmpty) {
+          if (isFileEmpty && !Array.isArray(mat.files)) {
             fileValue = originalMat.file || null;
           }
+
+          let filesValue = materialFileIds(mat);
+          if (filesValue.length === 0) filesValue = materialFileIds(originalMat);
 
           // text: اگر جدید ست شده استفاده کن، در غیر این صورت از قدیمی
           let textValue = mat.text;
@@ -913,17 +964,14 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
 
           return {
             material: materialValue,
-            file: fileValue,
+            file: filesValue[0] ?? (typeof fileValue === "string" ? fileValue : fileValue || null),
+            files: filesValue,
             text: textValue,
           };
         });
       } else {
         // materials جدید خالی است، کامل از order اصلی کپی کن
-        materialsData = originalMaterials.map((mat: any) => ({
-          material: mat.material || null,
-          file: mat.file || null,
-          text: mat.text || null,
-        }));
+        materialsData = originalMaterials.map((mat: any) => storedMaterial(mat));
       }
 
       // 0 means "not selected". A missing field keeps the original order's value.
@@ -1582,7 +1630,7 @@ export const orderList = async (req: Request, res: Response) => {
 
     /* ------------------ CATEGORIES + FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
-    const ticketMap = await loadOrderTickets(orderIds);
+    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds);
     const redesignedRows = orderIds.length
       ? await db
           .select({ parentId: orders.refrence })
@@ -1657,6 +1705,7 @@ export const orderList = async (req: Request, res: Response) => {
           categories: uniqueCategories,
           files: filesByOrderId[order.id] ?? [],
           tickets: ticketMap.get(order.id) ?? [],
+          messageCount: messageCount.get(order.id) ?? 0,
         };
       }),
     );
@@ -1794,7 +1843,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
 
     /* ------------------ FILES ------------------ */
     const orderIds = ordersList.map(({ orders: order }) => order.id);
-    const ticketMap = await loadOrderTickets(orderIds);
+    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds);
     const allOrderFiles = orderIds.length
       ? await db
           .select({
@@ -1865,6 +1914,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
           payment: paymentItem[0] || null,
           files: filesByOrderId[order.id] ?? [],
           tickets: ticketMap.get(order.id) ?? [],
+          messageCount: messageCount.get(order.id) ?? 0,
         };
       }),
     );
@@ -1901,19 +1951,30 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
         null,
       );
     }
-    const file = req.file;
-    if (file) {
-      const fileRecord = await db
+    const uploadedFiles = (
+      Array.isArray(req.files) ? req.files : req.file ? [req.file] : []
+    ) as Express.Multer.File[];
+    if (uploadedFiles.length > 0) {
+      const fileRecords = await db
         .insert(files)
-        .values({
-          filename: file.filename,
-          originalname: file.originalname,
-          mimetype: file.mimetype,
-          size: file.size,
-          path: file.path,
-          user_id: (req as any).user?.id || null,
-        })
+        .values(
+          uploadedFiles.map((file) => ({
+            filename: file.filename,
+            originalname: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size,
+            path: file.path,
+            user_id: (req as any).user?.id || null,
+          }))
+        )
         .returning();
+      await db.insert(orderFiles).values(
+        fileRecords.map((record) => ({
+          orderId: +orderId,
+          fileId: record.id,
+          role: "admin" as const,
+        }))
+      );
     }
     const [order] = await db
       .select()
@@ -1932,7 +1993,7 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .where(eq(orders.id, +orderId))
       .limit(1);
 
-    const adminFileValue = file ? file.path : (currentOrder?.adminFile || null);
+    const adminFileValue = uploadedFiles[0]?.path || currentOrder?.adminFile || null;
     const parsedPrice = Number(totalPrice);
     const basePrice = Number.isFinite(parsedPrice)
       ? parsedPrice
@@ -2452,26 +2513,77 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       .where(inArray(tooth.id, teethIds))
       .orderBy(asc(tooth.toothnumber));
 
-    const otherServiceTitles: string[] = [];
     const volumeFields: { label: string; value: string }[] = [];
-    const deviceTitles = new Set<string>();
     const fileIds: number[] = [];
     const directPathFiles: {
       path: string;
       toothnumber: number | null;
       text: string | null;
+      section: string | null;
       originalname: string;
     }[] = [];
     const fileMetaMap: Record<
       number,
-      { toothnumber: number | null; text: string | null }
+      { toothnumber: number | null; text: string | null; section: string | null }
     > = {};
+    const servicesByToothId = new Map<number, string[]>();
+
+    const materialIds = new Set<number>();
+    for (const toothItem of teethData) {
+      if (!Array.isArray(toothItem.materials)) continue;
+      for (const mat of toothItem.materials as { material?: number }[]) {
+        if (typeof mat.material === "number" && mat.material > 0) {
+          materialIds.add(mat.material);
+        }
+      }
+    }
+
+    const materialInfo = new Map<number, { title: string; categoryTitle: string }>();
+    if (materialIds.size > 0) {
+      const materialRows = await db
+        .select({
+          id: material.id,
+          title: material.title,
+          categoryTitle: materialcategory.title,
+        })
+        .from(material)
+        .leftJoin(materialcategory, eq(material.materialcategory, materialcategory.id))
+        .where(inArray(material.id, [...materialIds]));
+      for (const row of materialRows) {
+        materialInfo.set(row.id, {
+          title: row.title || "",
+          categoryTitle: row.categoryTitle || "",
+        });
+      }
+    }
+
+    const materialFileRefs = (mat: {
+      file?: unknown;
+      files?: unknown;
+    }): Array<number | string> => {
+      const refs: Array<number | string> = [];
+      const seen = new Set<string>();
+      const push = (value: unknown) => {
+        if (typeof value === "number" && Number.isInteger(value) && value > 0) {
+          const key = `n:${value}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          refs.push(value);
+          return;
+        }
+        if (typeof value === "string" && value.trim()) {
+          const key = `s:${value}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          refs.push(value);
+        }
+      };
+      push(mat.file);
+      if (Array.isArray(mat.files)) mat.files.forEach(push);
+      return refs;
+    };
 
     for (const toothItem of teethData) {
-      if (toothItem.deviceTitle) {
-        deviceTitles.add(toothItem.deviceTitle);
-      }
-
       if (toothItem.volume && Array.isArray(toothItem.volume)) {
         for (const vol of toothItem.volume) {
           const label = volumeFieldLabel(toothItem.toothnumber, vol);
@@ -2483,59 +2595,67 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         }
       }
 
+      const serviceTitles: string[] = [];
       if (toothItem.materials && Array.isArray(toothItem.materials)) {
-        for (const mat of toothItem.materials as any[]) {
-          if (mat.material) {
-            const [materialItem] = await db
-              .select({ title: material.title })
-              .from(material)
-              .where(eq(material.id, mat.material))
-              .limit(1);
+        for (const mat of toothItem.materials as {
+          material?: number;
+          file?: unknown;
+          files?: unknown;
+          text?: string | null;
+        }[]) {
+          const info =
+            typeof mat.material === "number" ? materialInfo.get(mat.material) : undefined;
+          if (info?.title) serviceTitles.push(info.title);
 
-            if (materialItem?.title) {
-              otherServiceTitles.push(materialItem.title);
-            }
-          }
+          const toothNumber =
+            typeof toothItem.toothnumber === "number" ? toothItem.toothnumber : null;
+          const section =
+            [
+              toothNumber !== null ? `دندان ${toothNumber}` : null,
+              info?.categoryTitle || null,
+              info?.title || null,
+            ]
+              .filter(Boolean)
+              .join(" / ") || "فایل متریال";
 
-          if (mat.file) {
-            if (typeof mat.file === "number") {
-              fileIds.push(mat.file);
-              if (!fileMetaMap[mat.file]) {
-                fileMetaMap[mat.file] = {
-                  toothnumber:
-                    typeof toothItem.toothnumber === "number"
-                      ? toothItem.toothnumber
-                      : null,
+          for (const ref of materialFileRefs(mat)) {
+            if (typeof ref === "number") {
+              fileIds.push(ref);
+              if (!fileMetaMap[ref]) {
+                fileMetaMap[ref] = {
+                  toothnumber: toothNumber,
                   text: mat.text ?? null,
+                  section,
                 };
               }
-            } else if (typeof mat.file === "string" && mat.file.length > 0) {
+            } else {
               directPathFiles.push({
-                path: mat.file,
-                toothnumber:
-                  typeof toothItem.toothnumber === "number"
-                    ? toothItem.toothnumber
-                    : null,
+                path: ref,
+                toothnumber: toothNumber,
                 text: mat.text ?? null,
-                originalname: path.basename(mat.file),
+                section,
+                originalname: path.basename(ref),
               });
             }
           }
         }
       }
+      servicesByToothId.set(toothItem.id, serviceTitles);
     }
 
+    const shadeTitles = teethData
+      .map((toothItem) => toothItem.materialshadeTitle)
+      .filter((title): title is string => !!title);
+    const uniqueShades = [...new Set(shadeTitles)];
+    const shadeLabel =
+      uniqueShades.length === 0
+        ? "-"
+        : uniqueShades.length === 1
+          ? uniqueShades[0]
+          : "طبق هر دندان";
     const firstToothWithShade = teethData.find(
       (t) => t.materialshadeTitle || t.colorCategoryTitle || t.colorTitle,
     );
-
-    const commentLines: string[] = [];
-    if (deviceTitles.size > 0) {
-      commentLines.push(`سیستم: ${Array.from(deviceTitles).join(" / ")}`);
-    }
-    if (order.comment) {
-      commentLines.push(order.comment);
-    }
 
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const downloadableFiles: DownloadableFile[] = [];
@@ -2556,7 +2676,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
     const roleLabel = (role: string | null) => {
       if (role === "admin") return "فایل ادمین";
       if (role === "designer") return "فایل طراح";
-      return "فایل پیوست";
+      return "پیوست چک‌اوت";
     };
 
     for (const file of orderAttachmentFiles) {
@@ -2602,7 +2722,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       addedPaths.add(file.path);
       const meta = fileMetaMap[file.id];
       downloadableFiles.push({
-        label: meta?.toothnumber ? `دندان ${meta.toothnumber}` : "فایل متریال",
+        label: meta?.section || (meta?.toothnumber ? `دندان ${meta.toothnumber}` : "فایل متریال"),
         name: file.originalname || path.basename(file.path),
         url: buildFileDownloadUrl(baseUrl, file.path),
         comment: meta?.text ?? null,
@@ -2613,7 +2733,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       if (addedPaths.has(file.path)) continue;
       addedPaths.add(file.path);
       downloadableFiles.push({
-        label: file.toothnumber ? `دندان ${file.toothnumber}` : "فایل متریال",
+        label: file.section || (file.toothnumber ? `دندان ${file.toothnumber}` : "فایل متریال"),
         name: file.originalname,
         url: buildFileDownloadUrl(baseUrl, file.path),
         comment: file.text ?? null,
@@ -2630,24 +2750,20 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         patientFullName(order.patientname, order.patientlastname) || "-",
       gender: getGenderLabel(order.patientgender),
       colorType: firstToothWithShade?.colorCategoryTitle || "-",
-      colorSystem: firstToothWithShade?.colorTitle || "VITA Classic",
-      shade: firstToothWithShade?.materialshadeTitle || "-",
+      shade: shadeLabel,
       teeth: teethData.map((t) => ({
         toothnumber: t.toothnumber,
         categoryName: t.categoryName || "-",
         colorLabel: buildToothColorLabel(t),
+        deviceTitle: t.deviceTitle || "-",
+        services: (servicesByToothId.get(t.id) ?? []).join("، ") || "-",
       })),
       connections: Array.isArray(order.connections)
         ? order.connections.map((connection: unknown) => Number(connection))
         : [],
       volumes: volumeFields,
-      otherServices:
-        otherServiceTitles.length > 0
-          ? [...new Set(otherServiceTitles)].join(" / ")
-          : "...",
       downloadableFiles,
-      doctorComments:
-        commentLines.length > 0 ? commentLines.join("\n") : "-",
+      doctorComments: order.comment || "-",
     };
 
     const materialImages = [
@@ -2659,7 +2775,11 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       })),
       ...directPathFiles.map((file) => ({
         filePath: path.join(process.cwd(), file.path),
-        meta: { toothnumber: file.toothnumber, text: file.text },
+        meta: {
+          toothnumber: file.toothnumber,
+          text: file.text,
+          section: file.section,
+        },
         originalname: file.originalname,
         mimetype: null,
       })),
@@ -2809,6 +2929,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
         report: orders.report,
         file: orders.file,
         adminFile: orders.adminFile,
+        vip: orders.vip,
         createdAt: orders.createdAt,
         updatedAt: orders.updatedAt,
         doctorName: orderOwner.name,
@@ -2841,7 +2962,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
 
     /* ------------------ FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
-    const ticketMap = await loadOrderTickets(orderIds);
+    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds);
     const allOrderFiles = await db
       .select({
         orderId: orderFiles.orderId,
@@ -2883,6 +3004,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
             categories: [],
             files: orderFilesList,
             tickets: ticketMap.get(order.id) ?? [],
+            messageCount: messageCount.get(order.id) ?? 0,
           };
         }
 
@@ -2910,6 +3032,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
           teeth: teethCategories,
           files: orderFilesList,
           tickets: ticketMap.get(order.id) ?? [],
+          messageCount: messageCount.get(order.id) ?? 0,
         };
       }),
     );

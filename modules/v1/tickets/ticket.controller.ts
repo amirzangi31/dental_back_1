@@ -26,48 +26,81 @@ function sessionUserId(req: Request) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+import { MAX_UPLOAD_FILES } from "../../../utils/uploadLimits";
+
+function ticketFileIds(raw: unknown): number[] {
+  let values: unknown[] = [];
+  if (Array.isArray(raw)) values = raw;
+  else if (typeof raw === "string" && raw.trim().startsWith("[")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) values = parsed;
+    } catch {
+      values = [];
+    }
+  } else if (raw !== undefined && raw !== null && raw !== "") {
+    values = [raw];
+  }
+  const ids: number[] = [];
+  for (const value of values) {
+    const id = Number(value);
+    if (Number.isInteger(id) && id > 0 && !ids.includes(id)) ids.push(id);
+    if (ids.length >= MAX_UPLOAD_FILES) break;
+  }
+  return ids;
+}
+
+function storedTicketFiles(paths: string[]) {
+  const unique = [...new Set(paths.filter(Boolean))].slice(0, MAX_UPLOAD_FILES);
+  if (unique.length === 0) return null;
+  if (unique.length === 1) return unique[0];
+  return JSON.stringify(unique);
+}
+
 async function resolveTicketAttachment(
   req: Request,
 ): Promise<{ path: string | null; error?: string }> {
   const userId = sessionUserId(req);
-  const uploaded = req.file;
+  const uploaded = (
+    Array.isArray(req.files) ? req.files : req.file ? [req.file] : []
+  ) as Express.Multer.File[];
+  const paths: string[] = [];
 
-  if (uploaded) {
-    const storedPath = uploaded.path.replace(/\\/g, "/");
+  for (const file of uploaded.slice(0, MAX_UPLOAD_FILES)) {
+    const storedPath = file.path.replace(/\\/g, "/");
     await db.insert(files).values({
       filename: path.basename(storedPath).slice(0, 255),
-      originalname: (uploaded.originalname || "file").slice(0, 255),
-      mimetype: (uploaded.mimetype || "application/octet-stream").slice(0, 100),
-      size: uploaded.size,
+      originalname: (file.originalname || "file").slice(0, 255),
+      mimetype: (file.mimetype || "application/octet-stream").slice(0, 100),
+      size: file.size,
       path: storedPath,
       user_id: userId,
     });
-    return { path: storedPath };
+    paths.push(storedPath);
   }
 
-  const rawFileId = req.body?.fileId;
-  if (rawFileId === undefined || rawFileId === null || rawFileId === "") {
-    return { path: null as string | null };
+  const ids = ticketFileIds(req.body?.fileIds ?? req.body?.fileId);
+  if (ids.length > 0) {
+    if (userId === null) return { path: null, error: "فایل پیوست معتبر نیست" };
+    const owned = await db
+      .select({ id: files.id, path: files.path })
+      .from(files)
+      .where(
+        and(
+          inArray(files.id, ids),
+          eq(files.user_id, userId),
+          or(eq(files.isDeleted, 0), isNull(files.isDeleted)),
+        ),
+      );
+    if (owned.length !== ids.length) return { path: null, error: "فایل پیوست معتبر نیست" };
+    const byId = new Map(owned.map((row) => [row.id, row.path]));
+    ids.forEach((id) => {
+      const stored = byId.get(id);
+      if (stored) paths.push(stored);
+    });
   }
 
-  const fileId = Number(rawFileId);
-  if (!Number.isInteger(fileId) || fileId <= 0 || userId === null) {
-    return { path: null, error: "فایل پیوست معتبر نیست" };
-  }
-
-  const [owned] = await db
-    .select({ path: files.path })
-    .from(files)
-    .where(
-      and(
-        eq(files.id, fileId),
-        eq(files.user_id, userId),
-        or(eq(files.isDeleted, 0), isNull(files.isDeleted)),
-      ),
-    );
-
-  if (!owned) return { path: null, error: "فایل پیوست معتبر نیست" };
-  return { path: owned.path };
+  return { path: storedTicketFiles(paths) };
 }
 
 function countUnansweredMessages(

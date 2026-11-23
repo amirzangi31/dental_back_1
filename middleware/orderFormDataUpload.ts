@@ -7,6 +7,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { files as filesTable } from "../db/schema/files";
 import { normalizeUploadedRequest, storedUploadFilename } from "../utils/uploadFilename";
+import {
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_COUNT_MESSAGE,
+  MAX_UPLOAD_FILES,
+  MAX_UPLOAD_SIZE_MESSAGE,
+} from "../utils/uploadLimits";
 
 const orderFilesDir = "order-files";
 if (!fs.existsSync(orderFilesDir)) {
@@ -25,14 +31,17 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: MAX_UPLOAD_BYTES,
   },
 });
 
 const handleUploadError = (err: unknown, res: Response) => {
   if (err instanceof multer.MulterError) {
     if (err.code === "LIMIT_FILE_SIZE") {
-      return errorResponse(res, 400, "حجم فایل بیش از حد مجاز است (حداکثر 50MB)", null);
+      return errorResponse(res, 400, MAX_UPLOAD_SIZE_MESSAGE, null);
+    }
+    if (err.code === "LIMIT_FILE_COUNT") {
+      return errorResponse(res, 400, MAX_UPLOAD_COUNT_MESSAGE, null);
     }
     return errorResponse(res, 400, "خطا در آپلود فایل", err);
   }
@@ -86,12 +95,10 @@ export const processOrderFormData = (
     if (err) {
       if (err instanceof multer.MulterError) {
         if (err.code === "LIMIT_FILE_SIZE") {
-          return errorResponse(
-            res,
-            400,
-            "حجم فایل بیش از حد مجاز است (حداکثر 50MB)",
-            null
-          );
+          return errorResponse(res, 400, MAX_UPLOAD_SIZE_MESSAGE, null);
+        }
+        if (err.code === "LIMIT_FILE_COUNT") {
+          return errorResponse(res, 400, MAX_UPLOAD_COUNT_MESSAGE, null);
         }
         return errorResponse(res, 400, "خطا در آپلود فایل", err);
       }
@@ -158,6 +165,10 @@ export const processOrderFormData = (
           filesMap.set(file.fieldname, file);
           filesArray.push(file);
         });
+
+        if (filesArray.length > MAX_UPLOAD_FILES) {
+          return errorResponse(res, 400, MAX_UPLOAD_COUNT_MESSAGE, null);
+        }
 
         // فایل‌های attachments (سطح سفارش) از material files جدا و در DB ذخیره می‌شوند
         const attachmentFiles = filesArray.filter(f => f.fieldname === 'attachments');

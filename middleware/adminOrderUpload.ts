@@ -5,6 +5,12 @@ import { Response, NextFunction } from "express";
 import fs from "fs";
 import { isAllowedUploadFile } from "./upload";
 import { normalizeUploadedRequest, storedUploadFilename } from "../utils/uploadFilename";
+import {
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_COUNT_MESSAGE,
+  MAX_UPLOAD_FILES,
+  MAX_UPLOAD_SIZE_MESSAGE,
+} from "../utils/uploadLimits";
 
 // ایجاد پوشه order-files در صورت عدم وجود
 const orderFilesDir = "order-files";
@@ -37,23 +43,21 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB
+    fileSize: MAX_UPLOAD_BYTES,
   },
 });
 
 export const uploadAdminOrderFile = (fieldName: string = "file") => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const uploadMiddleware = upload.single(fieldName);
+    const uploadMiddleware = upload.array(fieldName, MAX_UPLOAD_FILES);
     uploadMiddleware(req, res, (err) => {
       if (err) {
         if (err instanceof multer.MulterError) {
           if (err.code === "LIMIT_FILE_SIZE") {
-            return errorResponse(
-              res,
-              400,
-              "حجم فایل بیش از حد مجاز است (حداکثر 50MB)",
-              null
-            );
+            return errorResponse(res, 400, MAX_UPLOAD_SIZE_MESSAGE, null);
+          }
+          if (err.code === "LIMIT_FILE_COUNT") {
+            return errorResponse(res, 400, MAX_UPLOAD_COUNT_MESSAGE, null);
           }
           return errorResponse(res, 400, "خطا در آپلود فایل", err);
         }

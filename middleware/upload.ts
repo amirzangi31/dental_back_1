@@ -4,6 +4,11 @@ import { Request } from "express";
 import { errorResponse } from "../utils/responses";
 import { Response, NextFunction } from "express";
 import { normalizeUploadedRequest, storedUploadFilename } from "../utils/uploadFilename";
+import {
+  MAX_UPLOAD_BYTES,
+  MAX_UPLOAD_COUNT_MESSAGE,
+  MAX_UPLOAD_SIZE_MESSAGE,
+} from "../utils/uploadLimits";
 
 const storage = multer.diskStorage({
   destination: (req: Request, file: Express.Multer.File, cb) => {
@@ -68,13 +73,11 @@ const upload = multer({
   },
 });
 
-const DESIGNER_MAX_FILE_BYTES = 50 * 1024 * 1024;
-
 const designerUpload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: DESIGNER_MAX_FILE_BYTES,
+    fileSize: MAX_UPLOAD_BYTES,
   },
 });
 
@@ -110,25 +113,15 @@ export const uploadMultipleWithPathFix = (
   maxCount: number = 10
 ) => {
   return (req: Request, res: Response, next: NextFunction) => {
-    const uploadMiddleware = upload.array(fieldName, maxCount);
+    const uploadMiddleware = designerUpload.array(fieldName, maxCount);
     uploadMiddleware(req, res, (err) => {
       if (err) {
         if (err instanceof multer.MulterError) {
           if (err.code === "LIMIT_FILE_SIZE") {
-            return errorResponse(
-              res,
-              400,
-              "حجم فایل بیش از حد مجاز است (حداکثر 10MB)",
-              null
-            );
+            return errorResponse(res, 400, MAX_UPLOAD_SIZE_MESSAGE, null);
           }
           if (err.code === "LIMIT_FILE_COUNT") {
-            return errorResponse(
-              res,
-              400,
-              `تعداد فایل‌ها بیش از حد مجاز است (حداکثر ${maxCount})`,
-              null
-            );
+            return errorResponse(res, 400, MAX_UPLOAD_COUNT_MESSAGE, null);
           }
           return errorResponse(res, 400, "خطا در آپلود فایل", err);
         }
@@ -290,12 +283,7 @@ export const uploadDesignerFiles = (
       if (err) {
         if (err instanceof multer.MulterError) {
           if (err.code === "LIMIT_FILE_SIZE") {
-            return errorResponse(
-              res,
-              400,
-              "حجم فایل بیش از حد مجاز است (حداکثر 50MB)",
-              null
-            );
+            return errorResponse(res, 400, MAX_UPLOAD_SIZE_MESSAGE, null);
           }
           if (err.code === "LIMIT_FILE_COUNT") {
             return errorResponse(
