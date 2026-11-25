@@ -1,6 +1,8 @@
 import path from "path";
 import fs from "fs";
 import { enablePersianPdfText } from "./persianPdfText";
+import { appendInvoicePricePage } from "../modules/v1/invoice/invoicePdf";
+import { InvoiceLineView } from "../modules/v1/invoice/invoiceDocument";
 
 const PAGE_WIDTH = 595.28;
 const MARGIN = 28;
@@ -32,14 +34,15 @@ export type OrderPdfData = {
   userType: string;
   doctorName: string;
   patientName: string;
+  patientAge: string;
   gender: string;
-  colorType: string;
   shade: string;
   teeth: OrderPdfTooth[];
   connections?: number[];
   volumes: { label: string; value: string }[];
   downloadableFiles: DownloadableFile[];
   doctorComments: string;
+  priceLines?: InvoiceLineView[];
 };
 
 type FileImageMeta = {
@@ -153,32 +156,58 @@ const drawSectionTitle = (
     });
 };
 
-const drawConnectionDots = (
-  doc: any,
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-  numbers: number[],
-) => {
-  if (!numbers.length) return;
-  const radius = 7;
-  const gap = 4;
-  const total = numbers.length * radius * 2 + (numbers.length - 1) * gap;
-  let cx = x + (width - total) / 2 + radius;
-  const cy = y + height - 12;
+const ARCH_INDEX = new Map<number, number>(
+  [
+    18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28, 48, 47, 46,
+    45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38,
+  ].map((tooth, index) => [tooth, index]),
+);
 
-  numbers.forEach((number) => {
-    doc.save();
-    doc.circle(cx, cy, radius).fill("#17C964");
-    doc.fillColor("#FFFFFF").fontSize(8).text(String(number), cx - radius, cy - 3.5, {
-      width: radius * 2,
-      align: "center",
-      lineBreak: false,
-    });
-    doc.restore();
-    cx += radius * 2 + gap;
+const toothArchOrder = (tooth: number) => ARCH_INDEX.get(tooth) ?? tooth;
+
+const summarizeConnectionPairs = (pairs: Array<[number, number]>) => {
+  const neighbors = new Map<number, Set<number>>();
+  const link = (from: number, to: number) => {
+    const next = neighbors.get(from) ?? new Set<number>();
+    next.add(to);
+    neighbors.set(from, next);
+  };
+  pairs.forEach(([from, to]) => {
+    link(from, to);
+    link(to, from);
   });
+
+  const seen = new Set<number>();
+  const phrases: { start: number; text: string }[] = [];
+
+  for (const tooth of neighbors.keys()) {
+    if (seen.has(tooth)) continue;
+    const component: number[] = [];
+    const stack = [tooth];
+    while (stack.length) {
+      const current = stack.pop();
+      if (current === undefined || seen.has(current)) continue;
+      seen.add(current);
+      component.push(current);
+      neighbors.get(current)?.forEach((next) => {
+        if (!seen.has(next)) stack.push(next);
+      });
+    }
+
+    const ends = component.filter((item) => (neighbors.get(item)?.size ?? 0) === 1);
+    const ordered = (ends.length >= 2 ? ends : component).sort(
+      (a, b) => toothArchOrder(a) - toothArchOrder(b),
+    );
+    const start = ordered[0];
+    const end = ordered[ordered.length - 1];
+    if (start === undefined || end === undefined || start === end) continue;
+    phrases.push({ start, text: `از ${start} به ${end}` });
+  }
+
+  return phrases
+    .sort((a, b) => toothArchOrder(a.start) - toothArchOrder(b.start))
+    .map((item) => item.text)
+    .join("، ");
 };
 
 const toothBoxLines = (toothItem: OrderPdfTooth) => [
@@ -201,7 +230,7 @@ const measureToothBoxHeight = (doc: any, toothItem: OrderPdfTooth, width: number
         lineGap: 1,
       }) + 2;
   });
-  return Math.max(78, height + 18);
+  return Math.max(70, height + 8);
 };
 
 const drawToothBox = (
@@ -211,7 +240,6 @@ const drawToothBox = (
   width: number,
   height: number,
   toothItem: OrderPdfTooth,
-  connectionNumbers: number[] = [],
 ) => {
   doc.save();
   doc.roundedRect(x, y, width, height, BOX_RADIUS).fill(BOX_BG);
@@ -237,8 +265,6 @@ const drawToothBox = (
         lineGap: 1,
       }) + 2;
   });
-
-  drawConnectionDots(doc, x, y, width, height, connectionNumbers);
 };
 
 const LINK_COLOR = "#2563EB";
@@ -371,40 +397,24 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
   );
   y += 52 + GAP + 4;
 
-  const col4Width = (CONTENT_WIDTH - GAP * 3) / 4;
+  const infoCols = 5;
+  const infoColWidth = (CONTENT_WIDTH - GAP * (infoCols - 1)) / infoCols;
   const rowFields = [
     { label: "نوع کاربری", value: data.userType },
     { label: "نام پزشک", value: data.doctorName },
     { label: "نام بیمار", value: data.patientName },
+    { label: "سن بیمار", value: data.patientAge },
     { label: "جنسیت", value: data.gender },
   ];
 
   rowFields.forEach((field, index) => {
     const rtlIndex = rowFields.length - 1 - index;
-    const x = MARGIN + rtlIndex * (col4Width + GAP);
-    drawFieldBox(doc, x, y, col4Width, 52, field.label, field.value);
+    const x = MARGIN + rtlIndex * (infoColWidth + GAP);
+    drawFieldBox(doc, x, y, infoColWidth, 52, field.label, field.value);
   });
   y += 52 + GAP + 4;
 
-  const col2Width = (CONTENT_WIDTH - GAP) / 2;
-  drawFieldBox(
-    doc,
-    MARGIN + col2Width + GAP,
-    y,
-    col2Width,
-    52,
-    "انتخاب نوع رنگ",
-    data.colorType,
-  );
-  drawFieldBox(
-    doc,
-    MARGIN,
-    y,
-    col2Width,
-    52,
-    "رنگ",
-    data.shade,
-  );
+  drawFieldBox(doc, MARGIN, y, CONTENT_WIDTH, 52, "رنگ", data.shade);
   y += 52 + GAP + 8;
 
   drawSectionTitle(doc, y, "انتخاب سفارش دندان");
@@ -435,9 +445,6 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
       teethY = MARGIN;
     }
     row.forEach((toothItem, column) => {
-      const connectionNumbers = activeConnections.filter((connection) =>
-        CONNECTION_PAIRS[connection]?.includes(toothItem.toothnumber ?? -1),
-      );
       drawToothBox(
         doc,
         MARGIN + column * (toothBoxWidth + GAP),
@@ -445,20 +452,17 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
         toothBoxWidth,
         rowHeight,
         toothItem,
-        connectionNumbers,
       );
     });
     teethY += rowHeight + GAP;
   }
   y = teethY + 8;
 
-  const connectionText = activeConnections
-    .map((connection) => {
-      const pair = CONNECTION_PAIRS[connection];
-      return pair ? `دندان ${pair[0]} به ${pair[1]}` : null;
-    })
-    .filter((line): line is string => !!line)
-    .join("، ");
+  const connectionText = summarizeConnectionPairs(
+    activeConnections
+      .map((connection) => CONNECTION_PAIRS[connection])
+      .filter((pair): pair is [number, number] => !!pair),
+  );
 
   if (connectionText) {
     const connectionInnerWidth = CONTENT_WIDTH - 20;
@@ -479,7 +483,7 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
       y,
       CONTENT_WIDTH,
       connectionBoxHeight,
-      "چسباندن",
+      "اتصالات",
       connectionText,
     );
     y += connectionBoxHeight + GAP + 8;
@@ -588,7 +592,7 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
       align: "right",
     });
 
-  doc
+    doc
     .fillColor(VALUE_COLOR)
     .fontSize(9)
     .text(data.doctorComments || "-", MARGIN + boxPadding, y + 28, {
@@ -596,6 +600,10 @@ const drawOrderForm = (doc: any, data: OrderPdfData) => {
       align: "right",
       lineGap: 3,
     });
+
+  if (data.priceLines?.length) {
+    appendInvoicePricePage(doc, data.priceLines);
+  }
 };
 
 const addImageToPDF = (

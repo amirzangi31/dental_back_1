@@ -14,13 +14,15 @@ RUN npm run build
 FROM node:22-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apk add --no-cache curl
+# dl-cdn.alpinelinux.org times out from this network; use a reachable mirror.
+RUN sed -i 's#https://dl-cdn.alpinelinux.org#https://mirror.arvancloud.ir#g' /etc/apk/repositories \
+ && apk add --no-cache curl
 
-COPY package.json package-lock.json* pnpm-lock.yaml* pnpm-workspace.yaml* .npmrc* ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev && npm install drizzle-kit dotenv; \
-    elif [ -f pnpm-lock.yaml ]; then corepack enable && pnpm install --prod --frozen-lockfile && pnpm add drizzle-kit dotenv; \
-    else npm install --omit=dev && npm install drizzle-kit dotenv; fi
-
+# Reuse the install from the builder stage. A second npm install here
+# times out against registry.npmjs.org on this network, and drizzle-kit
+# (needed for migrations) is already in that node_modules tree.
+COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/drizzle ./drizzle
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts

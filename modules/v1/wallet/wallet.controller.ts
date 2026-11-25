@@ -53,7 +53,7 @@ export const getWallet = async (req: Request, res: Response) => {
       res,
       200,
       {
-        balance: account.balanceToman,
+        balance: Math.round(Number(account.balanceToman) || 0),
         entries,
         pagination: {
           page,
@@ -137,7 +137,7 @@ export const increaseWalletBalance = async (req: Request, res: Response) => {
     const note = typeof req.body?.note === "string" ? req.body.note.trim() : "";
     const result = await increaseWalletByAdmin({
       userId: Number(req.body?.userId),
-      amountToman: Number(req.body?.amount),
+      amountToman: Math.round(Number(req.body?.amount)),
       actorUserId,
       note: note || null,
     });

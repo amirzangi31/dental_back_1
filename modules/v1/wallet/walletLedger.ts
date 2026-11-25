@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "../../../db";
 import { orders } from "../../../db/schema/orders";
 import { payment } from "../../../db/schema/payment";
@@ -146,15 +146,22 @@ export const increaseWalletByAdmin = async (input: {
       .for("update");
     if (!locked) throw new WalletPayError(500, "Wallet could not be created");
 
-    const balance = locked.balanceToman + amountToman;
-    if (balance > maxBalanceToman) {
+    const current = Math.round(Number(locked.balanceToman) || 0);
+    const balance = current + amountToman;
+    if (!Number.isFinite(balance) || balance > maxBalanceToman) {
       throw new WalletPayError(400, "Amount is too large");
     }
 
-    await tx
+    const [updated] = await tx
       .update(wallet)
-      .set({ balanceToman: balance, updatedAt: new Date() })
-      .where(eq(wallet.id, locked.id));
+      .set({
+        balanceToman: sql`${wallet.balanceToman} + ${amountToman}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(wallet.id, locked.id))
+      .returning();
+    if (!updated) throw new WalletPayError(500, "Wallet could not be updated");
+    const nextBalance = Math.round(Number(updated.balanceToman) || 0);
 
     const [entry] = await tx
       .insert(walletEntry)
@@ -169,7 +176,7 @@ export const increaseWalletByAdmin = async (input: {
       })
       .returning();
 
-    return { balance, amount: amountToman, entry };
+    return { balance: nextBalance, amount: amountToman, entry };
   });
 };
 

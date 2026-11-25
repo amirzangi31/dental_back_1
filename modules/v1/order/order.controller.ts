@@ -11,7 +11,6 @@ import { device } from "../../../db/schema/device";
 import { materialshade } from "../../../db/schema/materialshade";
 import { volume } from "../../../db/schema/volume";
 import { color } from "../../../db/schema/color";
-import { categorycolor } from "../../../db/schema/categorycolor";
 import { files } from "../../../db/schema/files";
 import {
   generateOrderFormPdfFile,
@@ -44,10 +43,14 @@ import {
 } from "../payment/orderPayment";
 import { tax } from "../../../db/schema/tax";
 import { material } from "../../../db/schema/material";
-import { materialcategory } from "../../../db/schema/materialcategory";
 import { users } from "../../../db/schema/users";
 import { tickets, ticketMessages } from "../../../db/schema/ticket";
 import { parseDefinedPrice } from "../../../utils/parseDefinedPrice";
+import {
+  buildInvoiceMoney,
+  FALLBACK_LINE_DESCRIPTION,
+  invoicePriceParts,
+} from "../invoice/invoiceDocument";
 import {
   applyDiscountToBeforeTax,
   billAfterDiscount,
@@ -125,7 +128,22 @@ const volumeFieldValue = (volumeItem: {
   return `${numeric}${unit}`;
 };
 
-const loadOrderTickets = async (orderIds: number[]) => {
+const countUnansweredMessages = (
+  messagesNewestFirst: { senderType: string }[],
+  mySenderType: string,
+  ticketStatus: string | null,
+) => {
+  if (ticketStatus === "close") return 0;
+
+  let unanswered = 0;
+  for (const msg of messagesNewestFirst) {
+    if (msg.senderType === mySenderType) break;
+    unanswered += 1;
+  }
+  return unanswered;
+};
+
+const loadOrderTickets = async (orderIds: number[], viewerRole?: string) => {
   const map = new Map<
     number,
     {
@@ -159,24 +177,49 @@ const loadOrderTickets = async (orderIds: number[]) => {
   }
 
   if (rows.length > 0) {
-    const totals = await db
+    const mySenderType = viewerRole === "admin" ? "admin" : "user";
+    const messages = await db
       .select({
         ticketId: ticketMessages.ticketId,
-        total: count(),
+        senderType: ticketMessages.senderType,
       })
       .from(ticketMessages)
       .where(
         inArray(
           ticketMessages.ticketId,
-          rows.map((row) => row.id)
-        )
+          rows.map((row) => row.id),
+        ),
       )
-      .groupBy(ticketMessages.ticketId);
-    const ticketOrder = new Map(rows.map((row) => [row.id, row.orderId]));
-    for (const row of totals) {
-      const orderId = ticketOrder.get(row.ticketId);
-      if (!orderId) continue;
-      messageCount.set(orderId, (messageCount.get(orderId) ?? 0) + Number(row.total));
+      .orderBy(desc(ticketMessages.id));
+
+    const messagesByTicket = new Map<number, { senderType: string }[]>();
+    for (const msg of messages) {
+      const thread = messagesByTicket.get(msg.ticketId);
+      if (thread) thread.push(msg);
+      else messagesByTicket.set(msg.ticketId, [msg]);
+    }
+
+    const reportRows = await db
+      .select({ id: orders.id, report: orders.report })
+      .from(orders)
+      .where(inArray(orders.id, orderIds));
+    const reportByOrder = new Map(reportRows.map((row) => [row.id, row.report]));
+
+    for (const [orderId, list] of map) {
+      const reportId = reportByOrder.get(orderId);
+      const ticket =
+        (typeof reportId === "number"
+          ? list.find((item) => item.id === reportId)
+          : undefined) ?? list[0];
+      if (!ticket) continue;
+      messageCount.set(
+        orderId,
+        countUnansweredMessages(
+          messagesByTicket.get(ticket.id) ?? [],
+          mySenderType,
+          ticket.ticketStatus,
+        ),
+      );
     }
   }
 
@@ -1630,7 +1673,7 @@ export const orderList = async (req: Request, res: Response) => {
 
     /* ------------------ CATEGORIES + FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
-    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds);
+    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds, user.role);
     const redesignedRows = orderIds.length
       ? await db
           .select({ parentId: orders.refrence })
@@ -1843,7 +1886,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
 
     /* ------------------ FILES ------------------ */
     const orderIds = ordersList.map(({ orders: order }) => order.id);
-    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds);
+    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds, user.role);
     const allOrderFiles = orderIds.length
       ? await db
           .select({
@@ -2496,11 +2539,11 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       .select({
         id: tooth.id,
         toothnumber: tooth.toothnumber,
+        categoryId: category.id,
         categoryName: category.title,
+        categoryPrice: category.price,
         deviceTitle: device.title,
         materialshadeTitle: materialshade.title,
-        colorTitle: color.title,
-        colorCategoryTitle: categorycolor.title,
         materials: tooth.materials,
         volume: tooth.volume,
       })
@@ -2508,8 +2551,6 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       .leftJoin(category, eq(tooth.category, category.id))
       .leftJoin(device, eq(tooth.device, device.id))
       .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
-      .leftJoin(color, eq(materialshade.color, color.id))
-      .leftJoin(categorycolor, eq(color.category, categorycolor.id))
       .where(inArray(tooth.id, teethIds))
       .orderBy(asc(tooth.toothnumber));
 
@@ -2538,21 +2579,20 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       }
     }
 
-    const materialInfo = new Map<number, { title: string; categoryTitle: string }>();
+    const materialInfo = new Map<number, { title: string; price: number }>();
     if (materialIds.size > 0) {
       const materialRows = await db
         .select({
           id: material.id,
           title: material.title,
-          categoryTitle: materialcategory.title,
+          price: material.price,
         })
         .from(material)
-        .leftJoin(materialcategory, eq(material.materialcategory, materialcategory.id))
         .where(inArray(material.id, [...materialIds]));
       for (const row of materialRows) {
         materialInfo.set(row.id, {
           title: row.title || "",
-          categoryTitle: row.categoryTitle || "",
+          price: parseDefinedPrice(row.price) ?? 0,
         });
       }
     }
@@ -2612,7 +2652,6 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
           const section =
             [
               toothNumber !== null ? `دندان ${toothNumber}` : null,
-              info?.categoryTitle || null,
               info?.title || null,
             ]
               .filter(Boolean)
@@ -2653,9 +2692,6 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         : uniqueShades.length === 1
           ? uniqueShades[0]
           : "طبق هر دندان";
-    const firstToothWithShade = teethData.find(
-      (t) => t.materialshadeTitle || t.colorCategoryTitle || t.colorTitle,
-    );
 
     const baseUrl = `${req.protocol}://${req.get("host")}`;
     const downloadableFiles: DownloadableFile[] = [];
@@ -2725,7 +2761,6 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         label: meta?.section || (meta?.toothnumber ? `دندان ${meta.toothnumber}` : "فایل متریال"),
         name: file.originalname || path.basename(file.path),
         url: buildFileDownloadUrl(baseUrl, file.path),
-        comment: meta?.text ?? null,
       });
     }
 
@@ -2736,9 +2771,64 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         label: file.section || (file.toothnumber ? `دندان ${file.toothnumber}` : "فایل متریال"),
         name: file.originalname,
         url: buildFileDownloadUrl(baseUrl, file.path),
-        comment: file.text ?? null,
       });
     }
+
+    const patientLabel =
+      patientFullName(order.patientname, order.patientlastname) || null;
+    const billTeeth = teethData.map((toothItem) => ({
+      categoryId: Number(toothItem.categoryId) || 0,
+      categoryTitle: toothItem.categoryName,
+      categoryPrice: parseDefinedPrice(toothItem.categoryPrice) ?? 0,
+      toothNumber: toothItem.toothnumber,
+      patientName: patientLabel,
+      deviceTitle: toothItem.deviceTitle,
+      materials: (Array.isArray(toothItem.materials) ? toothItem.materials : [])
+        .map((item: { material?: number }) => {
+          const id = Number(item?.material);
+          const info = materialInfo.get(id);
+          return {
+            id,
+            title: info?.title ?? "",
+            price: info?.price ?? 0,
+          };
+        })
+        .filter((item) => Number.isInteger(item.id) && item.id > 0),
+    }));
+    const priceParts = invoicePriceParts(billTeeth);
+    const [taxItem] = await db.select().from(tax);
+    const [vipItem] = await db.select().from(vip);
+    const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
+    const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
+    const isVip = order.vip === true;
+    const discountToman = Math.max(0, Math.round(Number(order.discountToman ?? 0)));
+    const beforeVip = priceParts.reduce((sum, part) => sum + part.beforeTaxToman, 0);
+    const vipToman = isVip ? (beforeVip * vipPercent) / 100 : 0;
+    const afterDiscount = beforeVip + vipToman - discountToman;
+    const paidToman = Math.round(afterDiscount + (afterDiscount * taxPercent) / 100);
+    const priced = priceParts.length
+      ? buildInvoiceMoney({
+          teeth: billTeeth.map((toothItem) => ({
+            categoryTitle: toothItem.categoryTitle,
+            toothNumber: toothItem.toothNumber,
+            patientName: toothItem.patientName,
+            deviceTitle: toothItem.deviceTitle,
+            beforeTaxToman:
+              toothItem.categoryPrice +
+              toothItem.materials.reduce((sum, item) => sum + item.price, 0),
+          })),
+          parts: priceParts,
+          isVip,
+          vipPercent,
+          taxPercent,
+          paidToman,
+          discountToman,
+        })
+      : null;
+    const priceLines =
+      priced && priced.lines[0]?.description !== FALLBACK_LINE_DESCRIPTION
+        ? priced.lines
+        : [];
 
     const formData = {
       hiddenField: order.title || "-",
@@ -2748,8 +2838,8 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         : "-",
       patientName:
         patientFullName(order.patientname, order.patientlastname) || "-",
+      patientAge: order.patientage != null ? String(order.patientage) : "-",
       gender: getGenderLabel(order.patientgender),
-      colorType: firstToothWithShade?.colorCategoryTitle || "-",
       shade: shadeLabel,
       teeth: teethData.map((t) => ({
         toothnumber: t.toothnumber,
@@ -2764,6 +2854,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       volumes: volumeFields,
       downloadableFiles,
       doctorComments: order.comment || "-",
+      priceLines,
     };
 
     const materialImages = [
@@ -2962,7 +3053,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
 
     /* ------------------ FILES ------------------ */
     const orderIds = ordersList.map((o) => o.id);
-    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds);
+    const { tickets: ticketMap, messageCount } = await loadOrderTickets(orderIds, user.role);
     const allOrderFiles = await db
       .select({
         orderId: orderFiles.orderId,

@@ -225,29 +225,6 @@ const drawParty = (doc: any, y: number, title: string, rows: ReturnType<typeof s
   return cursor;
 };
 
-const drawCopies = (doc: any, y: number) => {
-  const labels = ["نسخه فروشنده", "نسخه خریدار", "نسخه حسابداری", "نسخه انبارداری"];
-  const width = CONTENT_WIDTH / labels.length;
-  const height = 20;
-  labels.forEach((label, index) => {
-    const x = RIGHT - (index + 1) * width;
-    strokeCell(doc, x, y, width, height);
-    const box = 8;
-    const boxX = x + width - 16;
-    const boxY = y + (height - box) / 2;
-    doc.save();
-    doc.lineWidth(0.7).strokeColor("#000000").rect(boxX, boxY, box, box).stroke();
-    doc.restore();
-    doc.fillColor("#000000").fontSize(8).text(label, x + 4, y + 5, {
-      width: width - 24,
-      height: 12,
-      align: "right",
-      lineBreak: false,
-    });
-  });
-  return y + height;
-};
-
 const drawInvoice = (doc: any, data: InvoiceDocument) => {
   setupFont(doc);
   let y = MARGIN;
@@ -320,7 +297,7 @@ const drawInvoice = (doc: any, data: InvoiceDocument) => {
     })),
   );
 
-  const footerNeeded = 18 + 36 + 52 + 20;
+  const footerNeeded = 18 + 36 + 52;
   const footerRoom = ensureSpace(doc, y, footerNeeded);
   y = footerRoom.y;
 
@@ -356,8 +333,73 @@ const drawInvoice = (doc: any, data: InvoiceDocument) => {
     lineBreak: false,
   });
   y += stampHeight;
+};
 
-  drawCopies(doc, y);
+export const appendInvoicePricePage = (doc: any, lines: InvoiceDocument["lines"]) => {
+  const visible = lines.filter(
+    (line) => line.lineTotalRial !== 0 || line.unitAmountRial !== 0 || line.taxRial !== 0,
+  );
+  if (visible.length === 0) return;
+
+  doc.addPage({ size: "A4", layout: "landscape", margin: MARGIN });
+  setupFont(doc);
+  let y = MARGIN;
+  y = drawBand(doc, y, 16, "مشخصات کالا یا خدمات مورد معامله");
+  y = drawGoodsHeader(doc, y);
+
+  visible.forEach((line) => {
+    const values = lineValues(line);
+    doc.fontSize(7);
+    const descriptionHeight = doc.heightOfString(values[2] || " ", {
+      width: GOODS_WIDTHS[2] - 6,
+      align: "right",
+    });
+    const rowHeight = Math.max(18, descriptionHeight + 8);
+    const room = ensureSpace(doc, y, rowHeight);
+    if (room.broke) y = drawGoodsHeader(doc, room.y);
+    else y = room.y;
+    y = drawCells(
+      doc,
+      y,
+      rowHeight,
+      values.map((value, index) => ({
+        text: value,
+        width: GOODS_WIDTHS[index],
+        align: (index === 2 ? "right" : "center") as Align,
+        fontSize: 7,
+      })),
+    );
+  });
+
+  const sum = (pick: (line: InvoiceDocument["lines"][number]) => number) =>
+    visible.reduce((total, line) => total + pick(line), 0);
+  const totalValues = [
+    "",
+    "",
+    "",
+    "",
+    "",
+    formatRial(sum((line) => line.lineTotalRial)),
+    formatRial(sum((line) => line.discountRial)),
+    formatRial(sum((line) => line.amountAfterDiscountRial)),
+    formatRial(sum((line) => line.taxRial)),
+    formatRial(sum((line) => line.tollRial)),
+    formatRial(sum((line) => line.taxAndTollRial)),
+    formatRial(sum((line) => line.totalWithTaxRial)),
+  ];
+  const totalsRoom = ensureSpace(doc, y, 18);
+  if (totalsRoom.broke) y = drawGoodsHeader(doc, totalsRoom.y);
+  else y = totalsRoom.y;
+  drawCells(
+    doc,
+    y,
+    18,
+    totalValues.map((value, index) => ({
+      text: value,
+      width: GOODS_WIDTHS[index],
+      align: "center" as Align,
+    })),
+  );
 };
 
 export const renderInvoicePdf = (data: InvoiceDocument): Promise<Buffer> => {

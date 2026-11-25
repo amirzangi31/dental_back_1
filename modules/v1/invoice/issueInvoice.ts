@@ -4,6 +4,7 @@ import { orders, orderTeeth } from "../../../db/schema/orders";
 import { users } from "../../../db/schema/users";
 import { tooth } from "../../../db/schema/tooth";
 import { category } from "../../../db/schema/category";
+import { device } from "../../../db/schema/device";
 import { material } from "../../../db/schema/material";
 import { tax } from "../../../db/schema/tax";
 import { vip } from "../../../db/schema/vip";
@@ -12,6 +13,7 @@ import {
   buildInvoiceMoney,
   buyerDisplayName,
   invoiceNotes,
+  invoicePriceParts,
   InvoiceDocument,
   toInvoiceDocument,
 } from "./invoiceDocument";
@@ -57,13 +59,16 @@ export const issueInvoiceForSettlement = async (
     .select({
       id: tooth.id,
       toothnumber: tooth.toothnumber,
+      categoryId: category.id,
       categoryTitle: category.title,
       categoryPrice: category.price,
+      deviceTitle: device.title,
       materials: tooth.materials,
     })
     .from(orderTeeth)
     .innerJoin(tooth, eq(orderTeeth.toothId, tooth.id))
     .leftJoin(category, eq(tooth.category, category.id))
+    .leftJoin(device, eq(tooth.device, device.id))
     .where(eq(orderTeeth.orderId, input.orderId))
     .orderBy(asc(tooth.id));
 
@@ -74,7 +79,7 @@ export const issueInvoiceForSettlement = async (
   ];
   const materialRows = materialIds.length
     ? await tx
-        .select({ id: material.id, price: material.price })
+        .select({ id: material.id, title: material.title, price: material.price })
         .from(material)
         .where(inArray(material.id, materialIds))
     : [];
@@ -84,26 +89,54 @@ export const issueInvoiceForSettlement = async (
       finiteNumber(row.price),
     ]),
   );
+  const titleByMaterial = new Map<number, string>(
+    materialRows.map((row: { id: number; title: string | null }) => [
+      row.id,
+      row.title ?? "",
+    ]),
+  );
+  const patientName =
+    [order.patientname, order.patientlastname].filter(Boolean).join(" ") || null;
+  const billTeeth = teeth.map((row: {
+    toothnumber: number | null;
+    categoryId: number | null;
+    categoryTitle: string | null;
+    categoryPrice: string | null;
+    deviceTitle: string | null;
+    materials: { material?: number | null }[] | null;
+  }) => ({
+    categoryId: Number(row.categoryId) || 0,
+    categoryTitle: row.categoryTitle,
+    categoryPrice: finiteNumber(row.categoryPrice),
+    toothNumber: row.toothnumber,
+    patientName,
+    deviceTitle: row.deviceTitle,
+    materials: materialIdsOf(row.materials).map((id) => ({
+      id,
+      title: titleByMaterial.get(id) ?? "",
+      price: priceByMaterial.get(id) ?? 0,
+    })),
+  }));
+  const parts = invoicePriceParts(billTeeth);
 
   const money = buildInvoiceMoney({
-    teeth: teeth.map((row: {
-      toothnumber: number | null;
+    teeth: billTeeth.map((row: {
       categoryTitle: string | null;
-      categoryPrice: string | null;
-      materials: { material?: number | null }[] | null;
+      toothNumber: number | null;
+      patientName: string | null;
+      deviceTitle: string | null;
+      categoryPrice: number;
+      materials: { price: number }[];
     }) => ({
       categoryTitle: row.categoryTitle,
-      toothNumber: row.toothnumber,
-      patientName:
-        [order.patientname, order.patientlastname].filter(Boolean).join(" ") ||
-        null,
+      toothNumber: row.toothNumber,
+      patientName: row.patientName,
+      deviceTitle: row.deviceTitle,
       beforeTaxToman:
-        finiteNumber(row.categoryPrice) +
-        materialIdsOf(row.materials).reduce(
-          (sum, id) => sum + (priceByMaterial.get(id) ?? 0),
-          0,
-        ),
+        row.categoryPrice +
+        row.materials.reduce((sum, item) => sum + item.price, 0),
     })),
+    parts: parts.length > 0 ? parts : undefined,
     isVip: order.vip === true,
     vipPercent: finiteNumber(vipItem?.percent),
     taxPercent: finiteNumber(taxItem?.percent),

@@ -63,6 +63,7 @@ export type InvoiceToothInput = {
   categoryTitle: string | null;
   toothNumber: number | null;
   patientName: string | null;
+  deviceTitle: string | null;
   beforeTaxToman: number;
 };
 
@@ -70,7 +71,7 @@ type InvoiceMoneyLine = {
   rowNumber: number;
   productCode: null;
   description: string;
-  quantity: 1;
+  quantity: number;
   unitAmountRial: number;
   lineTotalRial: number;
   discountRial: number;
@@ -79,6 +80,28 @@ type InvoiceMoneyLine = {
   tollRial: 0;
   taxAndTollRial: number;
   totalWithTaxRial: number;
+};
+
+export type InvoiceBillMaterial = {
+  id: number;
+  title: string;
+  price: number;
+};
+
+export type InvoiceBillTooth = {
+  categoryId: number;
+  categoryTitle: string | null;
+  categoryPrice: number;
+  toothNumber: number | null;
+  patientName: string | null;
+  deviceTitle: string | null;
+  materials: InvoiceBillMaterial[];
+};
+
+export type InvoicePricePart = {
+  description: string;
+  quantity: number;
+  beforeTaxToman: number;
 };
 
 export type InvoiceMoney = {
@@ -110,16 +133,139 @@ export const toothLineDescription = (
   categoryTitle: string | null,
   toothNumber: number | null,
   patientName: string | null,
+  deviceTitle: string | null,
+) =>
+  pricePartDescription(
+    categoryTitle,
+    toothNumber === null || toothNumber === undefined ? [] : [toothNumber],
+    patientName,
+    deviceTitle,
+  );
+
+export const pricePartDescription = (
+  title: string | null,
+  toothNumbers: number[],
+  patientName: string | null,
+  deviceTitle: string | null,
 ) => {
   const parts: string[] = [];
-  const title = blank(categoryTitle);
-  if (title) parts.push(title);
-  if (toothNumber !== null && toothNumber !== undefined) {
-    parts.push(`دندان ${toothNumber}`);
-  }
+  const name = blank(title);
+  if (name) parts.push(name);
+  if (toothNumbers.length === 1) parts.push(`دندان ${toothNumbers[0]}`);
+  else if (toothNumbers.length > 1) parts.push(`دندان ${toothNumbers.join(" - ")}`);
+  const deviceName = blank(deviceTitle);
+  if (deviceName) parts.push(`دستگاه ${deviceName}`);
   const patient = blank(patientName);
   if (patient) parts.push(`بیمار ${patient}`);
   return parts.join("، ");
+};
+
+// Same split as the checkout bill: category price, then each material price.
+// Identical teeth stay on one row and the quantity is their count.
+export const invoicePriceParts = (teeth: InvoiceBillTooth[]): InvoicePricePart[] => {
+  type Group = {
+    title: string;
+    deviceTitle: string | null;
+    patientName: string | null;
+    teeth: number[];
+    categoryPrice: number;
+    materials: InvoiceBillMaterial[];
+  };
+  const groups = new Map<string, Group>();
+
+  teeth.forEach((tooth) => {
+    const materials = tooth.materials.map((item) => ({
+      id: item.id,
+      title: item.title,
+      price: item.price,
+    }));
+    const signature = materials
+      .map((item) => `${item.id}:${item.price}`)
+      .sort()
+      .join(",");
+    const key = [
+      tooth.categoryId,
+      tooth.categoryPrice,
+      tooth.deviceTitle ?? "",
+      tooth.patientName ?? "",
+      signature,
+    ].join("|");
+    const existing = groups.get(key);
+    if (existing) {
+      if (tooth.toothNumber !== null && tooth.toothNumber !== undefined) {
+        existing.teeth.push(tooth.toothNumber);
+      }
+      return;
+    }
+    groups.set(key, {
+      title: blank(tooth.categoryTitle) ?? "",
+      deviceTitle: tooth.deviceTitle,
+      patientName: tooth.patientName,
+      teeth:
+        tooth.toothNumber !== null && tooth.toothNumber !== undefined
+          ? [tooth.toothNumber]
+          : [],
+      categoryPrice: tooth.categoryPrice,
+      materials,
+    });
+  });
+
+  const parts: InvoicePricePart[] = [];
+  groups.forEach((group) => {
+    const toothNumbers = [...group.teeth].sort((a, b) => a - b);
+    const count = Math.max(1, toothNumbers.length);
+    const describe = (title: string) =>
+      pricePartDescription(title, toothNumbers, group.patientName, group.deviceTitle);
+    let categoryShown = false;
+    if (group.categoryPrice) {
+      categoryShown = true;
+      parts.push({
+        description: describe(group.title),
+        quantity: count,
+        beforeTaxToman: group.categoryPrice * count,
+      });
+    }
+    group.materials.forEach((item) => {
+      if (!item.price) return;
+      const ownTitle = blank(item.title) ?? "—";
+      const title = categoryShown
+        ? ownTitle
+        : [group.title, ownTitle].filter(Boolean).join(" / ");
+      parts.push({
+        description: describe(title),
+        quantity: count,
+        beforeTaxToman: item.price * count,
+      });
+    });
+  });
+  return parts;
+};
+
+const insertDeviceMention = (description: string, deviceTitle: string) => {
+  const phrase = `دستگاه ${deviceTitle}`;
+  const patientMarker = "، بیمار ";
+  const patientIndex = description.indexOf(patientMarker);
+  if (patientIndex === -1) return `${description}، ${phrase}`;
+  return `${description.slice(0, patientIndex)}، ${phrase}${description.slice(patientIndex)}`;
+};
+
+export const mentionDevicesInDescription = (
+  description: string,
+  devicesByTooth: ReadonlyMap<number, string>,
+) => {
+  if (!description || description.includes("دستگاه ")) return description;
+  if (description === VIP_LINE_DESCRIPTION) return description;
+
+  const toothMatch = description.match(/دندان\s+(\d+)/);
+  if (toothMatch) {
+    const deviceTitle = devicesByTooth.get(Number(toothMatch[1]));
+    return deviceTitle ? insertDeviceMention(description, deviceTitle) : description;
+  }
+
+  if (description !== FALLBACK_LINE_DESCRIPTION) return description;
+  const titles = [...new Set(devicesByTooth.values())].filter(Boolean);
+  if (titles.length === 0) return description;
+  return `${description}، ${titles.map((title) => `دستگاه ${title}`).join("، ")}`;
 };
 
 export const invoiceNotes = (
@@ -143,14 +289,16 @@ const lineFromParts = (
   beforeTaxRial: number,
   discountRial: number,
   taxRial: number,
+  quantity = 1,
 ): InvoiceMoneyLine => {
+  const safeQuantity = quantity > 0 ? quantity : 1;
   const amountAfterDiscountRial = beforeTaxRial - discountRial;
   return {
     rowNumber,
     productCode: null,
     description,
-    quantity: 1,
-    unitAmountRial: beforeTaxRial,
+    quantity: safeQuantity,
+    unitAmountRial: Math.round(beforeTaxRial / safeQuantity),
     lineTotalRial: beforeTaxRial,
     discountRial,
     amountAfterDiscountRial,
@@ -159,6 +307,12 @@ const lineFromParts = (
     taxAndTollRial: taxRial,
     totalWithTaxRial: amountAfterDiscountRial + taxRial,
   };
+};
+
+const draftLineRial = (beforeTaxToman: number, quantity: number) => {
+  const safeQuantity = quantity > 0 ? quantity : 1;
+  const unitRial = Math.round((beforeTaxToman / safeQuantity) * 10);
+  return { quantity: safeQuantity, lineRial: unitRial * safeQuantity };
 };
 
 const allocate = (total: number, weights: number[]): number[] => {
@@ -222,6 +376,7 @@ const collapsedMoney = (
 // جمع فاکتور همچنان همان مبلغ پرداخت‌شده است.
 export const buildInvoiceMoney = (input: {
   teeth: InvoiceToothInput[];
+  parts?: InvoicePricePart[];
   isVip: boolean;
   vipPercent: number;
   taxPercent: number;
@@ -236,17 +391,27 @@ export const buildInvoiceMoney = (input: {
     ? Math.max(0, Math.round(input.discountToman ?? 0))
     : 0;
   const discountRial = discountToman * 10;
-  const teethSum = input.teeth.reduce((sum, tooth) => {
-    const price = Number(tooth.beforeTaxToman);
-    return sum + (Number.isFinite(price) ? price : 0);
-  }, 0);
+  const baseDrafts: InvoicePricePart[] =
+    input.parts && input.parts.length > 0
+      ? input.parts
+      : input.teeth.map((tooth) => ({
+          description: toothLineDescription(
+            tooth.categoryTitle,
+            tooth.toothNumber,
+            tooth.patientName,
+            tooth.deviceTitle,
+          ),
+          quantity: 1,
+          beforeTaxToman: Number(tooth.beforeTaxToman) || 0,
+        }));
+  const teethSum = baseDrafts.reduce((sum, part) => sum + part.beforeTaxToman, 0);
   const vipToman = input.isVip ? (teethSum * vipPercent) / 100 : 0;
   const beforeTaxToman = teethSum + vipToman;
   const afterDiscountToman = beforeTaxToman - discountToman;
   const taxToman = (afterDiscountToman * taxPercent) / 100;
   const finalToman = afterDiscountToman + taxToman;
   const reconstructedMatches =
-    input.teeth.length > 0 &&
+    baseDrafts.length > 0 &&
     discountToman <= beforeTaxToman &&
     Math.round(finalToman) === paidToman;
 
@@ -254,30 +419,26 @@ export const buildInvoiceMoney = (input: {
     return collapsedMoney(paidToman, paidRial, taxPercent, discountRial);
   }
 
-  const drafts: { description: string; beforeTaxToman: number }[] = input.teeth.map(
-    (tooth) => ({
-      description: toothLineDescription(
-        tooth.categoryTitle,
-        tooth.toothNumber,
-        tooth.patientName,
-      ),
-      beforeTaxToman: Number(tooth.beforeTaxToman) || 0,
-    }),
-  );
+  const drafts: InvoicePricePart[] = [...baseDrafts];
   if (input.isVip) {
     drafts.push({
       description: VIP_LINE_DESCRIPTION,
+      quantity: 1,
       beforeTaxToman: vipToman,
     });
   }
 
-  const unitRials = drafts.map((draft) => Math.round(draft.beforeTaxToman * 10));
-  const beforeTaxRial = unitRials.reduce((sum, amount) => sum + amount, 0);
+  const pricedDrafts = drafts.map((draft) => ({
+    ...draft,
+    ...draftLineRial(draft.beforeTaxToman, draft.quantity),
+  }));
+  const lineRials = pricedDrafts.map((draft) => draft.lineRial);
+  const beforeTaxRial = lineRials.reduce((sum, amount) => sum + amount, 0);
   if (discountRial > beforeTaxRial) {
     return collapsedMoney(paidToman, paidRial, taxPercent, discountRial);
   }
-  const discountShares = allocate(discountRial, unitRials);
-  const afterDiscountRials = unitRials.map(
+  const discountShares = allocate(discountRial, lineRials);
+  const afterDiscountRials = lineRials.map(
     (amount, index) => amount - discountShares[index],
   );
   const taxRial = paidRial - afterDiscountRials.reduce((sum, amount) => sum + amount, 0);
@@ -286,13 +447,14 @@ export const buildInvoiceMoney = (input: {
   }
 
   const taxShares = allocate(taxRial, afterDiscountRials);
-  const lines = drafts.map((draft, index) =>
+  const lines = pricedDrafts.map((draft, index) =>
     lineFromParts(
       index + 1,
       draft.description,
-      unitRials[index],
+      draft.lineRial,
       discountShares[index],
       taxShares[index],
+      draft.quantity,
     ),
   );
   const totalRial = lines.reduce((sum, line) => sum + line.totalWithTaxRial, 0);

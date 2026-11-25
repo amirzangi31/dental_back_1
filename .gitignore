@@ -29,6 +29,15 @@ yarn-error.log*
 .env*.local
 .env
 
+# runtime storage and logs
+/logs/
+/order-pdfs/
+/order-files/*
+!/order-files/.gitkeep
+/uploads/*
+!/uploads/seed/
+!/uploads/seed/**
+
 # vercel
 .vercel
 
