@@ -985,6 +985,81 @@ export const MESSAGES = {
     en: "Phone verified successfully",
     de: "Telefonnummer erfolgreich verifiziert",
   },
+  ORDER_NEEDS_ITEM: {
+    fa: "حداقل یک دندان یا یک خدمت مستقل باید انتخاب شود",
+    en: "Select at least one tooth or one independent service",
+    de: "Wählen Sie mindestens einen Zahn oder eine unabhängige Leistung",
+  },
+  INDEPENDENT_SERVICE_INVALID: {
+    fa: "خدمات مستقل معتبر نیست",
+    en: "Independent service selection is invalid",
+    de: "Die Auswahl der unabhängigen Leistung ist ungültig",
+  },
+  INDEPENDENT_OPTION_INVALID: {
+    fa: "گزینه خدمت مستقل معتبر نیست",
+    en: "Independent service option is invalid",
+    de: "Die Option der unabhängigen Leistung ist ungültig",
+  },
+  INDEPENDENT_FILE_SERVICE_INVALID: {
+    fa: "خدمت آپلود فایل معتبر نیست",
+    en: "File upload service is invalid",
+    de: "Der Datei-Upload-Service ist ungültig",
+  },
+  INDEPENDENT_FILE_INVALID: {
+    fa: "فایل خدمت مستقل معتبر نیست",
+    en: "Independent service file is invalid",
+    de: "Die Datei der unabhängigen Leistung ist ungültig",
+  },
+  INDEPENDENT_CATEGORY_NOT_FOUND: {
+    fa: "دسته‌بندی خدمات مستقل یافت نشد",
+    en: "Independent service category was not found",
+    de: "Kategorie der unabhängigen Leistung wurde nicht gefunden",
+  },
+  INDEPENDENT_SERVICE_NOT_FOUND: {
+    fa: "خدمت مستقل یافت نشد",
+    en: "Independent service was not found",
+    de: "Unabhängige Leistung wurde nicht gefunden",
+  },
+  INDEPENDENT_CATEGORY_LIST: {
+    fa: "دسته‌بندی‌ها دریافت شد",
+    en: "Categories fetched successfully",
+    de: "Kategorien erfolgreich abgerufen",
+  },
+  INDEPENDENT_CATEGORY_CREATED: {
+    fa: "دسته‌بندی ساخته شد",
+    en: "Category created successfully",
+    de: "Kategorie erfolgreich erstellt",
+  },
+  INDEPENDENT_CATEGORY_UPDATED: {
+    fa: "دسته‌بندی ویرایش شد",
+    en: "Category updated successfully",
+    de: "Kategorie erfolgreich aktualisiert",
+  },
+  INDEPENDENT_CATEGORY_DELETED: {
+    fa: "دسته‌بندی حذف شد",
+    en: "Category deleted successfully",
+    de: "Kategorie erfolgreich gelöscht",
+  },
+  INDEPENDENT_SERVICE_LIST: {
+    fa: "خدمات مستقل دریافت شد",
+    en: "Independent services fetched successfully",
+    de: "Unabhängige Leistungen erfolgreich abgerufen",
+  },
+  INDEPENDENT_SERVICE_CREATED: {
+    fa: "خدمت مستقل ساخته شد",
+    en: "Independent service created successfully",
+    de: "Unabhängige Leistung erfolgreich erstellt",
+  },
+  INDEPENDENT_SERVICE_UPDATED: {
+    fa: "خدمت مستقل ویرایش شد",
+    en: "Independent service updated successfully",
+    de: "Unabhängige Leistung erfolgreich aktualisiert",
+  },
+  INDEPENDENT_SERVICE_DELETED: {
+    fa: "خدمت مستقل حذف شد",
+    en: "Independent service deleted successfully",
+    de: "Unabhängige Leistung erfolgreich gelöscht",
+  },
 } as const satisfies Record<string, LocalizedText>;
 
 export type MessageKey = keyof typeof MESSAGES;

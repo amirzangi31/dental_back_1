@@ -108,6 +108,33 @@ export const uploadSingle = (fieldName: string = "file") => {
   };
 };
 
+export const uploadAny = (maxCount = 30) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const uploadMiddleware = upload.any();
+    uploadMiddleware(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === "LIMIT_FILE_SIZE") {
+            return errorResponse(res, 400, "حجم فایل بیش از حد مجاز است (حداکثر 10MB)", null);
+          }
+          return errorResponse(res, 400, "خطا در آپلود فایل", err);
+        }
+        return errorResponse(res, 400, err.message || "خطا در آپلود فایل", err);
+      }
+      if (Array.isArray(req.files) && req.files.length > maxCount) {
+        return errorResponse(res, 400, "تعداد فایل‌ها بیش از حد مجاز است", null);
+      }
+      if (Array.isArray(req.files)) {
+        req.files.forEach((file) => {
+          if (file.path) file.path = file.path.replace(/\\/g, "/");
+        });
+      }
+      normalizeUploadedRequest(req);
+      next();
+    });
+  };
+};
+
 export const uploadMultipleWithPathFix = (
   fieldName: string = "files",
   maxCount: number = 10

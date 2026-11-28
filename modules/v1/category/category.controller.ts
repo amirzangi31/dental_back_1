@@ -16,6 +16,9 @@ const optionalText = (value: unknown): string | null => {
   return text;
 };
 
+const parseFlag = (value: unknown): boolean =>
+  value === true || value === "true" || value === "1" || value === 1;
+
 const optionalId = (value: unknown): number | null => {
   if (
     value === undefined ||
@@ -52,6 +55,7 @@ export const getCategory = async (req: Request, res: Response) => {
         description: category.description,
         file: category.file,
         price: category.price,
+        haveRedesign: category.haveRedesign,
         color: {
           id: color.id,
           color: color.code,
@@ -116,7 +120,7 @@ export const getCategoryDropDown = async (req: Request, res: Response) => {
 
 export const createCategory = async (req: Request, res: Response) => {
   try {
-    const { title, description, price, catalog, color } = req.body;
+    const { title, description, price, catalog, color  , haveRedesign } = req.body;
     const file = req.file;
 
     if (!file) {
@@ -142,10 +146,15 @@ export const createCategory = async (req: Request, res: Response) => {
         description: optionalText(description),
         price: price ? String(price) : null,
         catalog: optionalId(catalog),
+        haveRedesign: parseFlag(haveRedesign),
         file: file.path,
         color: optionalId(color),
       })
+      
       .returning();
+      if(categoryItem.length === 0){
+        return errorResponse(res, 400, "خطا در ثبت دسته بندی", null);
+      }
 
     return successResponse(
       res,
@@ -160,7 +169,7 @@ export const createCategory = async (req: Request, res: Response) => {
 
 export const updateCategory = async (req: Request, res: Response) => {
   try {
-    const { title, description, price, catalog, color } = req.body;
+    const { title, description, price, catalog, color, haveRedesign } = req.body;
     const file = req.file;
 
     const updateData: any = {};
@@ -169,6 +178,7 @@ export const updateCategory = async (req: Request, res: Response) => {
     if (price) updateData.price = String(price);
     if ("catalog" in req.body) updateData.catalog = optionalId(catalog);
     if ("color" in req.body) updateData.color = optionalId(color);
+    if ("haveRedesign" in req.body) updateData.haveRedesign = parseFlag(haveRedesign);
     if (file) {
       await db.insert(files).values({
         filename: file.filename,

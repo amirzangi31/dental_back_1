@@ -29,6 +29,7 @@ export const material: any = pgTable("material", {
   inputRequired: boolean("inputRequired").notNull().default(false),
   description: text("description"),
   file: text("file"),
+  haveRedesign: boolean("haveRedesign").notNull().default(false),
   materialcategory: integer("materialcategory").references(
     () => materialcategory.id
   ),

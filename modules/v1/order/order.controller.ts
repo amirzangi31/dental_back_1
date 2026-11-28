@@ -2,6 +2,14 @@ import { Request, Response } from "express";
 import { errorResponse, successResponse } from "../../../utils/responses";
 import { db } from "../../../db";
 import { orders, OrderStatus, orderStatusEnum, orderTeeth, orderFiles } from "../../../db/schema/orders";
+import {
+  independentServicePriceParts,
+  insertIndependentLines,
+  loadIndependentServicesByOrders,
+  quoteIndependentServices,
+  resolveIndependentSelection,
+  sumIndependentServiceSnapshots,
+} from "../independentService/resolveSelection";
 import { tooth } from "../../../db/schema/tooth";
 import { alias } from "drizzle-orm/pg-core";
 import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
@@ -46,6 +54,7 @@ import { material } from "../../../db/schema/material";
 import { users } from "../../../db/schema/users";
 import { tickets, ticketMessages } from "../../../db/schema/ticket";
 import { parseDefinedPrice } from "../../../utils/parseDefinedPrice";
+import { redesignPrice } from "../../../utils/redesignPrice";
 import {
   buildInvoiceMoney,
   FALLBACK_LINE_DESCRIPTION,
@@ -335,10 +344,6 @@ const findMissingRequiredMaterialInput = async (
   return null;
 };
 
-// A redesign is half the catalog price. VIP and tax are applied after that cut.
-const redesignPrice = (price: number, isRedesign: boolean) =>
-  isRedesign ? price / 2 : price;
-
 export const createOrder = async (req: Request, res: Response) => {
   try {
     const user = (req as any).user;
@@ -358,18 +363,24 @@ export const createOrder = async (req: Request, res: Response) => {
       teeth,
       connections,
       antagonists,
+      independentServices,
     } = req.body;
 
-    // ---------- validate teeth ----------
-    if (!teeth || !Array.isArray(teeth) || teeth.length === 0)
-      return errorResponse(
-        res,
-        400,
-        "At least one tooth must be selected",
-        null,
-      );
+    const teethInput = Array.isArray(teeth) ? teeth : [];
+    const resolvedServices = await resolveIndependentSelection(independentServices, {
+      userId: user?.userId || user?.id,
+      requireOwnedFiles: true,
+    });
+    if (!resolvedServices.ok) {
+      return errorResponse(res, 400, resolvedServices.message, null);
+    }
+    if (teethInput.length === 0 && resolvedServices.lines.length === 0) {
+      return errorResponse(res, 400, "ORDER_NEEDS_ITEM", null);
+    }
 
-    const missingMaterialInput = await findMissingRequiredMaterialInput(teeth);
+    const missingMaterialInput = teethInput.length
+      ? await findMissingRequiredMaterialInput(teethInput)
+      : null;
     if (missingMaterialInput) {
       return errorResponse(
         res,
@@ -382,7 +393,7 @@ export const createOrder = async (req: Request, res: Response) => {
     // ---------- create teeth values & compute prices ----------
     let totalPrice = 0;
     let hasMissingPrice = false;
-    const teethValues = teeth.map((t: any) => {
+    const teethValues = teethInput.map((t: any) => {
       const materialsData =
         t.materials && Array.isArray(t.materials)
           ? t.materials.map((mat: any) => storedMaterial(mat))
@@ -399,8 +410,8 @@ export const createOrder = async (req: Request, res: Response) => {
     });
 
     // Calculate total price: category + materials (without volume)
-    for (let i = 0; i < teeth.length; i++) {
-      const t = teeth[i];
+    for (let i = 0; i < teethInput.length; i++) {
+      const t = teethInput[i];
       let toothPrice = 0;
 
       // Category price
@@ -455,6 +466,8 @@ export const createOrder = async (req: Request, res: Response) => {
     const isVip = vipParametr === "true" || vipParametr === true;
     if (hasMissingPrice) {
       totalPrice = 0;
+    } else {
+      totalPrice += resolvedServices.subtotal;
     }
     const vipAmount =
       isVip && !hasMissingPrice ? (totalPrice * vipPercent) / 100 : 0;
@@ -470,46 +483,66 @@ export const createOrder = async (req: Request, res: Response) => {
     const taxAmount = appliedDiscount.taxAmount;
     const finalTotal = hasMissingPrice ? 0 : appliedDiscount.total;
 
-    // ---------- create order ----------
-    const [createdOrder]: any = await db
-      .insert(orders)
-      .values({
-        title: title || null,
-        user_id: user.userId,
-        patientname: patientname || null,
-        patientlastname: patientlastname || null,
-        patientage: patientage ? parseInt(patientage, 10) : null,
-        patientgender: patientgender || null,
-        report: report ? parseInt(report, 10) : null,
-        status: "payment" as OrderStatus,
-        totalaprice: String(finalTotal),
-        paymentstatus: false,
-        comment: comment || null,
-        file: file || null,
-        discount: discount ? parseInt(discount, 10) : null,
-        discountCode: appliedDiscount.code,
-        discountToman: appliedDiscount.discountToman,
-        vip: vipParametr === "true" || vipParametr === true || false,
-        connections: connections || [],
-        antagonists: antagonists || [],
-      })
-      .returning();
+    // ---------- create order, teeth, and independent services ----------
+    const createdOrderBundle = await db.transaction(async (tx) => {
+      const [createdOrder]: any = await tx
+        .insert(orders)
+        .values({
+          title: title || null,
+          user_id: user.userId,
+          patientname: patientname || null,
+          patientlastname: patientlastname || null,
+          patientage: patientage ? parseInt(patientage, 10) : null,
+          patientgender: patientgender || null,
+          report: report ? parseInt(report, 10) : null,
+          status: "payment" as OrderStatus,
+          totalaprice: String(finalTotal),
+          paymentstatus: false,
+          comment: comment || null,
+          file: file || null,
+          discount: discount ? parseInt(discount, 10) : null,
+          discountCode: appliedDiscount.code,
+          discountToman: appliedDiscount.discountToman,
+          vip: vipParametr === "true" || vipParametr === true || false,
+          connections: connections || [],
+          antagonists: antagonists || [],
+        })
+        .returning();
 
-    // ---------- create teeth ----------
-    const createdTeeth = await db.insert(tooth).values(teethValues).returning();
-
-    // ---------- insert orderTeeth ----------
-    const orderTeethData = createdTeeth.map((t) => ({
-      orderId: createdOrder.id,
-      toothId: t.id,
-    }));
-    if (orderTeethData.length)
-      await db.insert(orderTeeth).values(orderTeethData);
+      const createdTeeth = teethValues.length
+        ? await tx.insert(tooth).values(teethValues).returning()
+        : [];
+      const orderTeethData = createdTeeth.map((t) => ({
+        orderId: createdOrder.id,
+        toothId: t.id,
+      }));
+      if (orderTeethData.length) await tx.insert(orderTeeth).values(orderTeethData);
+      await insertIndependentLines(tx, createdOrder.id, resolvedServices.lines);
+      const serviceFileIds = [
+        ...new Set(resolvedServices.lines.flatMap((line) => line.fileIds)),
+      ];
+      if (serviceFileIds.length) {
+        await tx
+          .insert(orderFiles)
+          .values(
+            serviceFileIds.map((fileId) => ({
+              orderId: createdOrder.id,
+              fileId,
+              role: "user" as const,
+            })),
+          )
+          .onConflictDoNothing();
+      }
+      return { createdOrder, createdTeeth };
+    });
+    const createdOrder = createdOrderBundle.createdOrder;
+    const createdTeeth = createdOrderBundle.createdTeeth;
 
     const teethIds = createdTeeth.map((t) => t.id);
 
     // ---------- fetch detailed teeth info ----------
-    const detailedTeeth = await db
+    const detailedTeeth = teethIds.length
+      ? await db
       .select({
         id: tooth.id,
         toothnumber: tooth.toothnumber,
@@ -528,7 +561,8 @@ export const createOrder = async (req: Request, res: Response) => {
       .leftJoin(device, eq(tooth.device, device.id))
       .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
       .leftJoin(color, eq(category.color, color.id))
-      .where(inArray(tooth.id, teethIds));
+      .where(inArray(tooth.id, teethIds))
+      : [];
 
     const finalTeeth = await Promise.all(
       detailedTeeth.map(async (t) => {
@@ -563,13 +597,16 @@ export const createOrder = async (req: Request, res: Response) => {
     let attachmentFileRecords: typeof files.$inferSelect[] = [];
 
     if (attachmentFileIds.length > 0) {
-      await db.insert(orderFiles).values(
-        attachmentFileIds.map((fileId) => ({
-          orderId: createdOrder.id,
-          fileId,
-          role: "user" as const,
-        }))
-      );
+      await db
+        .insert(orderFiles)
+        .values(
+          attachmentFileIds.map((fileId) => ({
+            orderId: createdOrder.id,
+            fileId,
+            role: "user" as const,
+          })),
+        )
+        .onConflictDoNothing();
 
       attachmentFileRecords = await db
         .select()
@@ -596,6 +633,7 @@ export const createOrder = async (req: Request, res: Response) => {
         order: createdOrder,
         teeth: finalTeeth,
         teethIds,
+        independentServices: quoteIndependentServices(resolvedServices.lines),
         payment: paymentRow,
         vip: vipAmount || 0,
         vipPercent: vipPercent || 0,
@@ -634,17 +672,22 @@ export const getOrderWithId = async (req: Request, res: Response) => {
       .from(orderTeeth)
       .where(eq(orderTeeth.orderId, order.id));
 
-    if (teethRelations.length === 0) {
+    const independentServices = (
+      await loadIndependentServicesByOrders(db, [order.id])
+    ).get(order.id) ?? [];
+    if (teethRelations.length === 0 && independentServices.length === 0) {
       return errorResponse(res, 404, "Teeth not found", null);
     }
 
     const teethIds = teethRelations.map((t) => t.toothId);
 
-    const teethData = await db
+    const teethData = teethIds.length
+      ? await db
       .select({
         id: tooth.id,
         toothnumber: tooth.toothnumber,
         category: tooth.category,
+        haveRedesign: category.haveRedesign,
         categoryName: category.title,
         categoryPrice: category.price,
         device: tooth.device,
@@ -659,7 +702,8 @@ export const getOrderWithId = async (req: Request, res: Response) => {
       .leftJoin(device, eq(tooth.device, device.id))
       .leftJoin(materialshade, eq(tooth.materialshade, materialshade.id))
       .leftJoin(color, eq(category.color, color.id))
-      .where(inArray(tooth.id, teethIds));
+      .where(inArray(tooth.id, teethIds))
+      : [];
 
     // دریافت Tax و VIP
     const [taxItem] = await db.select().from(tax);
@@ -686,7 +730,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
         toothHasMissingPrice = true;
         hasMissingPrice = true;
       } else {
-        categoryPriceNum = redesignPrice(parsedCategoryPrice, isRedesignQuote);
+        categoryPriceNum = redesignPrice(parsedCategoryPrice, isRedesignQuote , toothData.haveRedesign ?? false);
       }
 
       // Get materials با جزئیات
@@ -704,7 +748,11 @@ export const getOrderWithId = async (req: Request, res: Response) => {
               const materialPrice =
                 parsedMaterialPrice === null
                   ? null
-                  : redesignPrice(parsedMaterialPrice, isRedesignQuote);
+                  : redesignPrice(
+                      parsedMaterialPrice,
+                      isRedesignQuote,
+                      materialItem.haveRedesign ?? false,
+                    );
 
               // دریافت مسیر فایل اگر وجود داشته باشد
               let filePath = null;
@@ -759,7 +807,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
               price:
                 parsedCategoryPrice === null
                   ? null
-                  : redesignPrice(parsedCategoryPrice, isRedesignQuote),
+                  : redesignPrice(parsedCategoryPrice, isRedesignQuote , toothData.haveRedesign ?? false),
             }
           : null,
         categoryName: toothData.categoryName,
@@ -780,6 +828,12 @@ export const getOrderWithId = async (req: Request, res: Response) => {
 
       teethDetails.push(toothDetail);
     }
+
+    const serviceSubtotal = independentServices.reduce(
+      (sum, item) => sum + Number(item.price || 0),
+      0,
+    );
+    if (!hasMissingPrice) subtotal += serviceSubtotal;
 
     // محاسبه summary
     const isVip = order.vip === true;
@@ -805,6 +859,7 @@ export const getOrderWithId = async (req: Request, res: Response) => {
           antagonists: order.antagonists ?? [],
         },
         teeth: teethDetails,
+        independentServices,
         summary: {
           subtotal: finalSubtotal,
           vip: vipAmount,
@@ -1055,14 +1110,21 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
       // Category price
       if (t.category) {
         const [categoryItem] = await db
-          .select({ price: category.price })
+          .select({
+            price: category.price,
+            haveRedesign: category.haveRedesign,
+          })
           .from(category)
           .where(eq(category.id, +t.category))
           .limit(1);
 
         const categoryPrice = parseDefinedPrice(categoryItem?.price);
         if (categoryPrice !== null) {
-          toothPrice += categoryPrice;
+          toothPrice += redesignPrice(
+            categoryPrice,
+            true,
+            categoryItem?.haveRedesign ?? false,
+          );
         }
       }
 
@@ -1070,14 +1132,21 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         for (const mat of t.materials) {
           if (mat.material) {
             const [materialItem] = await db
-              .select({ price: material.price })
+              .select({
+                price: material.price,
+                haveRedesign: material.haveRedesign,
+              })
               .from(material)
               .where(eq(material.id, mat.material))
               .limit(1);
 
             const materialPrice = parseDefinedPrice(materialItem?.price);
             if (materialPrice !== null) {
-              toothPrice += materialPrice;
+              toothPrice += redesignPrice(
+                materialPrice,
+                true,
+                materialItem?.haveRedesign ?? false,
+              );
             }
           }
         }
@@ -1092,7 +1161,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
     const [vipItem] = await db.select().from(vip);
     const vipPercent = vipItem ? Number(vipItem.percent || 0) : 0;
 
-    const billablePrice = redesignPrice(totalPrice, true);
+    const billablePrice = totalPrice;
     const isVip = vipParametr === "true" || vipParametr === true;
     const vipAmount = isVip ? (billablePrice * vipPercent) / 100 : 0;
     const totalBeforeTax = billablePrice + vipAmount;
@@ -1185,6 +1254,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
         category: tooth.category,
         categoryName: category.title,
         categoryPrice: category.price,
+        categoryHaveRedesign: category.haveRedesign,
         device: tooth.device,
         materialshade: tooth.materialshade,
         materials: tooth.materials,
@@ -1201,20 +1271,31 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
 
     const finalTeeth = await Promise.all(
       detailedTeeth.map(async (t) => {
-        let toothTotalPrice = parseDefinedPrice(t.categoryPrice) ?? 0;
+        const categoryAmount = parseDefinedPrice(t.categoryPrice);
+        let toothTotalPrice =
+          categoryAmount === null
+            ? 0
+            : redesignPrice(categoryAmount, true, t.categoryHaveRedesign ?? false);
 
         if (t.materials && Array.isArray(t.materials)) {
           for (const mat of t.materials) {
             if (mat.material) {
               const [materialItem] = await db
-                .select({ price: material.price })
+                .select({
+                  price: material.price,
+                  haveRedesign: material.haveRedesign,
+                })
                 .from(material)
                 .where(eq(material.id, mat.material))
                 .limit(1);
 
               const materialPrice = parseDefinedPrice(materialItem?.price);
               if (materialPrice !== null) {
-                toothTotalPrice += materialPrice;
+                toothTotalPrice += redesignPrice(
+                  materialPrice,
+                  true,
+                  materialItem?.haveRedesign ?? false,
+                );
               }
             }
           }
@@ -1222,7 +1303,7 @@ export const createOrderWithRefrence = async (req: Request, res: Response) => {
 
         return {
           ...t,
-          price: redesignPrice(toothTotalPrice, true),
+          price: toothTotalPrice,
         };
       }),
     );
@@ -1341,12 +1422,14 @@ export const updateOrder = async (req: Request, res: Response) => {
       materialshade: +t.materialshade || null,
       volume: normalizeToothVolumes(t.volume),
     }));
-    const totalPrice = await calculateTeethTotalPrice(db, teethValues, {
+    const toothPrice = await calculateTeethTotalPrice(db, teethValues, {
       category,
       device,
       materialshade,
       volume,
     });
+    const totalPrice =
+      toothPrice + (await sumIndependentServiceSnapshots(db, +id));
 
     const codeRequest = readDiscountCodeInput(discountCode);
     const currentDiscountCode = order[0].discountCode ?? null;
@@ -1712,6 +1795,7 @@ export const orderList = async (req: Request, res: Response) => {
       },
       {}
     );
+    const independentByOrder = await loadIndependentServicesByOrders(db, orderIds);
 
     const ordersWithCategories = await Promise.all(
       ordersList.map(async (order) => {
@@ -1746,6 +1830,7 @@ export const orderList = async (req: Request, res: Response) => {
           ...order,
           redesignUsed: redesignedParentIds.has(order.id),
           categories: uniqueCategories,
+          independentServices: independentByOrder.get(order.id) ?? [],
           files: filesByOrderId[order.id] ?? [],
           tickets: ticketMap.get(order.id) ?? [],
           messageCount: messageCount.get(order.id) ?? 0,
@@ -1912,6 +1997,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
       acc[f.orderId].push(f);
       return acc;
     }, {});
+    const independentByOrder = await loadIndependentServicesByOrders(db, orderIds);
 
     /* ------------------ CATEGORIES + PAYMENT (OUTPUT SAME) ------------------ */
     const ordersWithCategories = await Promise.all(
@@ -1954,6 +2040,7 @@ export const orderListAdmin = async (req: Request, res: Response) => {
           doctorName: owner?.name ?? null,
           doctorLastName: owner?.lastName ?? null,
           categories: teethCategories,
+          independentServices: independentByOrder.get(order.id) ?? [],
           payment: paymentItem[0] || null,
           files: filesByOrderId[order.id] ?? [],
           tickets: ticketMap.get(order.id) ?? [],
@@ -2025,11 +2112,6 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .where(eq(orders.id, +orderId));
     if (!order) return errorResponse(res, 404, "Order not found", null);
 
-    const vipRows = await db.select({ percent: vip.percent }).from(vip);
-    if (vipRows.length === 0) {
-      return errorResponse(res, 404, "VIP percent not found", null);
-    }
-
     const [currentOrder] = await db
       .select({ adminFile: orders.adminFile })
       .from(orders)
@@ -2038,15 +2120,14 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
 
     const adminFileValue = uploadedFiles[0]?.path || currentOrder?.adminFile || null;
     const parsedPrice = Number(totalPrice);
-    const basePrice = Number.isFinite(parsedPrice)
+    // totalaprice already includes VIP and tax. The form amount is the payable total.
+    const payablePrice = Number.isFinite(parsedPrice)
       ? parsedPrice
       : Number(order.totalaprice || 0);
-    const vipPercent = Number(vipRows[0]?.percent || 0);
-    const vipAmount = order.vip ? (basePrice * vipPercent) / 100 : 0;
 
     const nextStatus = status as OrderStatus;
     if (isWorkOrderStatus(nextStatus) && !order.paymentstatus) {
-      await settleUnpaidOrderByAdmin(+orderId, basePrice + vipAmount);
+      await settleUnpaidOrderByAdmin(+orderId, payablePrice);
     }
     if (nextStatus === "payment" && !order.paymentstatus) {
       await ensurePendingPayment(+orderId);
@@ -2057,7 +2138,7 @@ export const changeOrderStatus = async (req: Request, res: Response) => {
       .set({
         status: nextStatus,
         adminFile: adminFileValue,
-        totalaprice: String(basePrice + vipAmount),
+        totalaprice: String(payablePrice),
       })
       .where(eq(orders.id, +orderId));
 
@@ -2328,10 +2409,17 @@ const isWithinVipHours = (
 
 export const calculateOrderPrice = async (req: Request, res: Response) => {
   try {
-    const { teeth, vip: vipParametr, redesign, discountCode } = req.body;
+    const { teeth, vip: vipParametr, redesign, discountCode, independentServices } = req.body;
     const isRedesignQuote = isRedesignFlag(redesign);
-    if (!teeth || !Array.isArray(teeth)) {
+    if (teeth != null && !Array.isArray(teeth)) {
       return errorResponse(res, 400, "Invalid order data", null);
+    }
+    const teethInput = Array.isArray(teeth) ? teeth : [];
+    const resolvedServices = isRedesignQuote
+      ? { ok: true as const, lines: [], subtotal: 0 }
+      : await resolveIndependentSelection(independentServices);
+    if (!resolvedServices.ok) {
+      return errorResponse(res, 400, resolvedServices.message, null);
     }
 
     const [taxItem] = await db.select().from(tax);
@@ -2347,7 +2435,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
     let hasMissingPrice = false;
     let subtotal = 0;
 
-    for (const toothData of teeth) {
+    for (const toothData of teethInput) {
       const toothDetail: any = {
         toothnumber: toothData.toothnumber || null,
         category: null,
@@ -2366,6 +2454,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
             title: category.title,
             color: color.code,
             price: category.price,
+            haveRedesign: category.haveRedesign,
           })
           .from(category)
           .leftJoin(color, eq(category.color, color.id))
@@ -2387,13 +2476,14 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
             toothDetail.categoryPrice = redesignPrice(
               categoryPrice,
               isRedesignQuote,
+              categoryItem.haveRedesign ?? false
             );
           }
           if (toothDetail.categoryDetail) {
             toothDetail.categoryDetail.price =
               categoryPrice === null
                 ? null
-                : redesignPrice(categoryPrice, isRedesignQuote);
+                : redesignPrice(categoryPrice, isRedesignQuote , categoryItem.haveRedesign ?? false);
           }
         } else {
           toothDetail.hasMissingPrice = true;
@@ -2417,7 +2507,11 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
               const materialPrice =
                 parsedMaterialPrice === null
                   ? null
-                  : redesignPrice(parsedMaterialPrice, isRedesignQuote);
+                  : redesignPrice(
+                      parsedMaterialPrice,
+                      isRedesignQuote,
+                      materialItem.haveRedesign ?? false,
+                    );
               toothDetail.materials.push({
                 id: materialItem.id,
                 title: materialItem.title,
@@ -2448,6 +2542,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
       teethDetails.push(toothDetail);
     }
 
+    if (!hasMissingPrice) subtotal += resolvedServices.subtotal;
     const finalSubtotal = hasMissingPrice ? 0 : subtotal;
     const vipAmount =
       !hasMissingPrice && isVip ? (finalSubtotal * vipPercent) / 100 : 0;
@@ -2468,6 +2563,7 @@ export const calculateOrderPrice = async (req: Request, res: Response) => {
       200,
       {
         teeth: teethDetails,
+        independentServices: quoteIndependentServices(resolvedServices.lines),
         summary: {
           subtotal: finalSubtotal,
           vip: vipAmount,
@@ -2529,19 +2625,23 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       .from(orderTeeth)
       .where(eq(orderTeeth.orderId, +id));
 
-    if (teethRelations.length === 0) {
+    const independentServices = (
+      await loadIndependentServicesByOrders(db, [+id])
+    ).get(+id) ?? [];
+    if (teethRelations.length === 0 && independentServices.length === 0) {
       return errorResponse(res, 404, "No teeth found for this order", null);
     }
 
     const teethIds = teethRelations.map((t) => t.toothId);
 
-    const teethData = await db
+    const teethData = teethIds.length === 0 ? [] : await db
       .select({
         id: tooth.id,
         toothnumber: tooth.toothnumber,
         categoryId: category.id,
         categoryName: category.title,
         categoryPrice: category.price,
+        categoryHaveRedesign: category.haveRedesign,
         deviceTitle: device.title,
         materialshadeTitle: materialshade.title,
         materials: tooth.materials,
@@ -2579,6 +2679,7 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       }
     }
 
+    const isRedesignOrder = order.refrence != null;
     const materialInfo = new Map<number, { title: string; price: number }>();
     if (materialIds.size > 0) {
       const materialRows = await db
@@ -2586,13 +2687,18 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
           id: material.id,
           title: material.title,
           price: material.price,
+          haveRedesign: material.haveRedesign,
         })
         .from(material)
         .where(inArray(material.id, [...materialIds]));
       for (const row of materialRows) {
         materialInfo.set(row.id, {
           title: row.title || "",
-          price: parseDefinedPrice(row.price) ?? 0,
+          price: redesignPrice(
+            parseDefinedPrice(row.price) ?? 0,
+            isRedesignOrder,
+            row.haveRedesign ?? false,
+          ),
         });
       }
     }
@@ -2734,6 +2840,21 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
       });
     }
 
+    for (const service of independentServices) {
+      const label = service.optionTitle
+        ? `${service.serviceTitle} - ${service.optionTitle}`
+        : service.serviceTitle;
+      for (const file of service.files) {
+        if (!file.path || addedPaths.has(file.path)) continue;
+        addedPaths.add(file.path);
+        downloadableFiles.push({
+          label,
+          name: file.originalname || path.basename(file.path),
+          url: buildFileDownloadUrl(baseUrl, file.path),
+        });
+      }
+    }
+
     let materialFilesFromDB: {
       id: number;
       path: string;
@@ -2779,7 +2900,11 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
     const billTeeth = teethData.map((toothItem) => ({
       categoryId: Number(toothItem.categoryId) || 0,
       categoryTitle: toothItem.categoryName,
-      categoryPrice: parseDefinedPrice(toothItem.categoryPrice) ?? 0,
+      categoryPrice: redesignPrice(
+        parseDefinedPrice(toothItem.categoryPrice) ?? 0,
+        isRedesignOrder,
+        toothItem.categoryHaveRedesign ?? false,
+      ),
       toothNumber: toothItem.toothnumber,
       patientName: patientLabel,
       deviceTitle: toothItem.deviceTitle,
@@ -2795,7 +2920,10 @@ export const generateMaterialFilesPDF = async (req: Request, res: Response) => {
         })
         .filter((item) => Number.isInteger(item.id) && item.id > 0),
     }));
-    const priceParts = invoicePriceParts(billTeeth);
+    const priceParts = [
+      ...invoicePriceParts(billTeeth),
+      ...independentServicePriceParts(independentServices),
+    ];
     const [taxItem] = await db.select().from(tax);
     const [vipItem] = await db.select().from(vip);
     const taxPercent = taxItem ? Number(taxItem.percent || 0) : 0;
@@ -3077,6 +3205,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
       acc[f.orderId].push(f);
       return acc;
     }, {});
+    const independentByOrder = await loadIndependentServicesByOrders(db, orderIds);
 
     /* ------------------ CATEGORIES ------------------ */
     const ordersWithCategories = await Promise.all(
@@ -3092,7 +3221,8 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
         if (!teethIds.length) {
           return {
             ...order,
-            categories: [],
+            teeth: [],
+            independentServices: independentByOrder.get(order.id) ?? [],
             files: orderFilesList,
             tickets: ticketMap.get(order.id) ?? [],
             messageCount: messageCount.get(order.id) ?? 0,
@@ -3121,6 +3251,7 @@ export const orderlistdesinger = async (req: Request, res: Response) => {
         return {
           ...order,
           teeth: teethCategories,
+          independentServices: independentByOrder.get(order.id) ?? [],
           files: orderFilesList,
           tickets: ticketMap.get(order.id) ?? [],
           messageCount: messageCount.get(order.id) ?? 0,

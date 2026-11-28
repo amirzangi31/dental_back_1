@@ -106,6 +106,48 @@
       "when": 1795430000000,
       "tag": "0014_wallet_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795854786046,
+      "tag": "0015_cuddly_archangel",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795857109303,
+      "tag": "0016_majestic_firebrand",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795900000000,
+      "tag": "0017_independent_services",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1796000000000,
+      "tag": "0018_independent_service_arch",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1796100000000,
+      "tag": "0019_independent_service_color",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1796200000000,
+      "tag": "0020_independent_service_allow_file",
+      "breakpoints": true
     }
   ]
 }

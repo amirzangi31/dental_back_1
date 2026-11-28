@@ -21,6 +21,11 @@ import { readInvoiceByOrderId } from "./readInvoice";
 import { readSellerProfile } from "./sellerProfile";
 import { consumeDiscountUse } from "../discountCode/resolveDiscount";
 import { iranProvinceLabel } from "../../../utils/iranNationalCode";
+import { redesignPrice } from "../../../utils/redesignPrice";
+import {
+  independentServicePriceParts,
+  loadIndependentServicesByOrders,
+} from "../independentService/resolveSelection";
 
 const finiteNumber = (value: unknown) => {
   const amount = Number(value ?? 0);
@@ -50,6 +55,7 @@ export const issueInvoiceForSettlement = async (
 
   const [order] = await tx.select().from(orders).where(eq(orders.id, input.orderId));
   if (!order) return null;
+  const isRedesignOrder = order.refrence != null;
 
   const [buyer] = await tx.select().from(users).where(eq(users.id, order.user_id));
   const [taxItem] = await tx.select().from(tax);
@@ -62,6 +68,7 @@ export const issueInvoiceForSettlement = async (
       categoryId: category.id,
       categoryTitle: category.title,
       categoryPrice: category.price,
+      categoryHaveRedesign: category.haveRedesign,
       deviceTitle: device.title,
       materials: tooth.materials,
     })
@@ -79,14 +86,19 @@ export const issueInvoiceForSettlement = async (
   ];
   const materialRows = materialIds.length
     ? await tx
-        .select({ id: material.id, title: material.title, price: material.price })
+        .select({
+          id: material.id,
+          title: material.title,
+          price: material.price,
+          haveRedesign: material.haveRedesign,
+        })
         .from(material)
         .where(inArray(material.id, materialIds))
     : [];
   const priceByMaterial = new Map<number, number>(
-    materialRows.map((row: { id: number; price: string | null }) => [
+    materialRows.map((row: { id: number; price: string | null; haveRedesign: boolean | null }) => [
       row.id,
-      finiteNumber(row.price),
+      redesignPrice(finiteNumber(row.price), isRedesignOrder, Boolean(row.haveRedesign)),
     ]),
   );
   const titleByMaterial = new Map<number, string>(
@@ -102,12 +114,17 @@ export const issueInvoiceForSettlement = async (
     categoryId: number | null;
     categoryTitle: string | null;
     categoryPrice: string | null;
+    categoryHaveRedesign: boolean | null;
     deviceTitle: string | null;
     materials: { material?: number | null }[] | null;
   }) => ({
     categoryId: Number(row.categoryId) || 0,
     categoryTitle: row.categoryTitle,
-    categoryPrice: finiteNumber(row.categoryPrice),
+    categoryPrice: redesignPrice(
+      finiteNumber(row.categoryPrice),
+      isRedesignOrder,
+      Boolean(row.categoryHaveRedesign),
+    ),
     toothNumber: row.toothnumber,
     patientName,
     deviceTitle: row.deviceTitle,
@@ -117,7 +134,13 @@ export const issueInvoiceForSettlement = async (
       price: priceByMaterial.get(id) ?? 0,
     })),
   }));
-  const parts = invoicePriceParts(billTeeth);
+  const serviceItems = (
+    await loadIndependentServicesByOrders(tx, [input.orderId])
+  ).get(input.orderId) ?? [];
+  const parts = [
+    ...invoicePriceParts(billTeeth),
+    ...independentServicePriceParts(serviceItems),
+  ];
 
   const money = buildInvoiceMoney({
     teeth: billTeeth.map((row: {

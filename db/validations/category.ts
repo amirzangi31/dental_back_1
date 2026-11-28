@@ -30,12 +30,26 @@ const optionalId = () =>
       return Number.isNaN(value) ? null : value;
     });
 
+const booleanFlag = () =>
+  yup
+    .boolean()
+    .transform((_value, originalValue) => {
+      return (
+        originalValue === true ||
+        originalValue === "true" ||
+        originalValue === "1" ||
+        originalValue === 1
+      );
+    })
+    .default(false);
+
 export const createCategorySchema = yup.object().shape({
   title: yup.string().required("Title is required"),
   description: optionalText(),
   price: optionalId(),
   catalog: optionalId(),
   color: optionalId(),
+  haveRedesign: booleanFlag(),
 });
 
 export const updateCategorySchema = yup.object().shape({
@@ -44,4 +58,5 @@ export const updateCategorySchema = yup.object().shape({
   price: optionalId(),
   catalog: optionalId(),
   color: optionalId(),
+  haveRedesign: booleanFlag(),
 });

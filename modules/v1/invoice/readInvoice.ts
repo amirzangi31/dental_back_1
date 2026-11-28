@@ -15,6 +15,11 @@ import {
   mentionDevicesInDescription,
   toInvoiceDocument,
 } from "./invoiceDocument";
+import { redesignPrice } from "../../../utils/redesignPrice";
+import {
+  independentServicePriceParts,
+  loadIndependentServicesByOrders,
+} from "../independentService/resolveSelection";
 
 const devicesByToothNumber = async (orderId: number, executor: any) => {
   const rows = await executor
@@ -56,6 +61,7 @@ const withPriceDetails = async (document: InvoiceDocument, executor: any) => {
     .from(orders)
     .where(eq(orders.id, document.orderId));
   if (!order) return document;
+  const isRedesignOrder = order.refrence != null;
 
   const [vipItem] = await executor.select().from(vip);
   const teeth = await executor
@@ -64,6 +70,7 @@ const withPriceDetails = async (document: InvoiceDocument, executor: any) => {
       categoryId: category.id,
       categoryTitle: category.title,
       categoryPrice: category.price,
+      categoryHaveRedesign: category.haveRedesign,
       deviceTitle: device.title,
       materials: tooth.materials,
     })
@@ -83,14 +90,19 @@ const withPriceDetails = async (document: InvoiceDocument, executor: any) => {
   ];
   const materialRows = materialIds.length
     ? await executor
-        .select({ id: material.id, title: material.title, price: material.price })
+        .select({
+          id: material.id,
+          title: material.title,
+          price: material.price,
+          haveRedesign: material.haveRedesign,
+        })
         .from(material)
         .where(inArray(material.id, materialIds))
     : [];
   const priceByMaterial = new Map<number, number>(
-    materialRows.map((row: { id: number; price: string | null }) => [
+    materialRows.map((row: { id: number; price: string | null; haveRedesign: boolean | null }) => [
       row.id,
-      finiteNumber(row.price),
+      redesignPrice(finiteNumber(row.price), isRedesignOrder, Boolean(row.haveRedesign)),
     ]),
   );
   const titleByMaterial = new Map<number, string>(
@@ -103,12 +115,17 @@ const withPriceDetails = async (document: InvoiceDocument, executor: any) => {
     categoryId: number | null;
     categoryTitle: string | null;
     categoryPrice: string | null;
+    categoryHaveRedesign: boolean | null;
     deviceTitle: string | null;
     materials: { material?: number | null }[] | null;
   }) => ({
     categoryId: Number(row.categoryId) || 0,
     categoryTitle: row.categoryTitle,
-    categoryPrice: finiteNumber(row.categoryPrice),
+    categoryPrice: redesignPrice(
+      finiteNumber(row.categoryPrice),
+      isRedesignOrder,
+      Boolean(row.categoryHaveRedesign),
+    ),
     toothNumber: row.toothnumber,
     patientName,
     deviceTitle: row.deviceTitle,
@@ -118,7 +135,13 @@ const withPriceDetails = async (document: InvoiceDocument, executor: any) => {
       price: priceByMaterial.get(id) ?? 0,
     })),
   }));
-  const parts = invoicePriceParts(billTeeth);
+  const serviceItems = (
+    await loadIndependentServicesByOrders(executor, [document.orderId])
+  ).get(document.orderId) ?? [];
+  const parts = [
+    ...invoicePriceParts(billTeeth),
+    ...independentServicePriceParts(serviceItems),
+  ];
   if (parts.length === 0) return document;
 
   const money = buildInvoiceMoney({

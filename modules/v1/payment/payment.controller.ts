@@ -19,6 +19,7 @@ import {
 } from "./orderPayment";
 import { requestZarinpalPayment, verifyZarinpalPayment } from "./zarinpal";
 import { creditWalletTopup, WalletTopupOutcome } from "../wallet/walletLedger";
+import { loadIndependentServicesByOrders } from "../independentService/resolveSelection";
 export const getPayments = async (req: Request, res: Response) => {
   try {
     const { limit, offset, sort } = getPagination(req);
@@ -83,10 +84,17 @@ export const getPayments = async (req: Request, res: Response) => {
       .limit(limit)
       .offset(offset);
 
+    const independentByOrder = await loadIndependentServicesByOrders(
+      db,
+      list
+        .map((item) => item.order?.id)
+        .filter((id): id is number => typeof id === "number"),
+    );
+
     const paymentsWithOrderDetails = await Promise.all(
       list.map(async (item) => {
         if (!item.order?.id) {
-          return { ...item, order: { ...item.order, teeth: [] } };
+          return { ...item, order: { ...item.order, teeth: [], independentServices: [] } };
         }
 
         const teethRelations = await db
@@ -96,7 +104,14 @@ export const getPayments = async (req: Request, res: Response) => {
 
         const teethIds = teethRelations.map((t) => t.toothId);
         if (!teethIds.length) {
-          return { ...item, order: { ...item.order, teeth: [] } };
+          return {
+            ...item,
+            order: {
+              ...item.order,
+              teeth: [],
+              independentServices: independentByOrder.get(item.order.id) ?? [],
+            },
+          };
         }
 
         const teethCategories = await db
@@ -123,6 +138,7 @@ export const getPayments = async (req: Request, res: Response) => {
           order: {
             ...item.order,
             teeth: teethCategories,
+            independentServices: independentByOrder.get(item.order.id) ?? [],
           },
         };
       })

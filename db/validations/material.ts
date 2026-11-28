@@ -42,6 +42,7 @@ export const createMaterialSchema = yup.object().shape({
   inputRequired: inputRequiredFlag(),
   description: yup.string().nullable(),
   file: yup.string().nullable(),
+  haveRedesign: inputRequiredFlag(),
   materialcategory: yup
     .string()
     .nullable()
@@ -60,6 +61,7 @@ export const updateMaterialSchema = yup.object().shape({
   inputRequired: inputRequiredFlag(),
   description: yup.string().nullable(),
   file: yup.string().nullable(),
+  haveRedesign: inputRequiredFlag(),
   materialcategory: yup.string().nullable(),
   category: yup.string().nullable(),
   parent_id: yup.string().nullable(),

@@ -217,7 +217,7 @@ export const invoicePriceParts = (teeth: InvoiceBillTooth[]): InvoicePricePart[]
     const describe = (title: string) =>
       pricePartDescription(title, toothNumbers, group.patientName, group.deviceTitle);
     let categoryShown = false;
-    if (group.categoryPrice) {
+    if (group.categoryPrice || group.categoryPrice === 0) {
       categoryShown = true;
       parts.push({
         description: describe(group.title),
@@ -226,7 +226,6 @@ export const invoicePriceParts = (teeth: InvoiceBillTooth[]): InvoicePricePart[]
       });
     }
     group.materials.forEach((item) => {
-      if (!item.price) return;
       const ownTitle = blank(item.title) ?? "—";
       const title = categoryShown
         ? ownTitle

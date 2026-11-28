@@ -26,6 +26,7 @@ export const createMaterial = async (req: Request, res: Response) => {
       descriptionStatus,
       materialcategory,
       inputRequired,
+      haveRedesign,
     } = req.body;
     const file = req.file;
 
@@ -53,6 +54,7 @@ export const createMaterial = async (req: Request, res: Response) => {
           ? parseInt(color)
           : null,
       descriptionStatus: descriptionStatus ? descriptionStatus : "none",
+      haveRedesign: parseInputRequired(haveRedesign),
       inputRequired: parseInputRequired(inputRequired),
       materialcategory:
         materialcategory &&
@@ -117,6 +119,7 @@ export const getMaterials = async (req: Request, res: Response) => {
         price: material.price,
         descriptionStatus: material.descriptionStatus,
         inputRequired: material.inputRequired,
+        haveRedesign: material.haveRedesign,
         description: material.description,
         materialcategory: material.materialcategory,
         parent_id: material.parent_id,
@@ -220,6 +223,7 @@ export const getMaterialByCategory = async (req: Request, res: Response) => {
         description: material.description,
         descriptionStatus: material.descriptionStatus,
         inputRequired: material.inputRequired,
+        haveRedesign: material.haveRedesign,
         materialcategoryId: material.materialcategory,
         materialcategoryTitle: materialcategory.title,
       })
@@ -384,6 +388,7 @@ export const updateMaterial = async (req: Request, res: Response) => {
         ? req.body.descriptionStatus
         : "none",
       inputRequired: parseInputRequired(req.body.inputRequired),
+      haveRedesign: parseInputRequired(req.body.haveRedesign),
       materialcategory:
         req.body.materialcategory &&
         req.body.materialcategory !== "null" &&
